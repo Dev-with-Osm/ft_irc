@@ -11,6 +11,54 @@
 #include <map>
 #include <poll.h>
 
+struct Command
+{
+    std::string cmd;
+    std::vector<std::string> params;
+};
+
+Command parseCommand(const std::string &line)
+{
+    Command command;
+    size_t i = 0;
+
+    while (i < line.length() && line[i] == ' ')
+        i++;
+
+    while (i < line.length() && line[i] != ' ')
+    {
+        command.cmd += line[i];
+        i++;
+    }
+
+    while (i < line.length())
+    {
+        while (i < line.length() && line[i] == ' ')
+            i++;
+
+
+        if (i >= line.length())
+            break;
+
+        if (line[i] == ':')
+        {
+            command.params.push_back(line.substr(i + 1));
+            break;
+        }
+
+        std::string param;
+
+        while (i < line.length() && line[i] != ' ')
+        {
+            param += line[i];
+            i++;
+        }
+        
+        command.params.push_back(param);
+    }
+    return (command);
+}
+
 int parsePort(const char *portArg)
 {
     return std::atoi(portArg);
@@ -78,15 +126,26 @@ void extractCompleteLines(int clientFd, std::string &clientBuffer)
         std::cout << "Complete line from fd "
                   << clientFd << ": [" << line << "]" << std::endl;
 
-        if (line.substr(0, 4) == "PING")
+        Command cmd = parseCommand(line);
+
+        std::cout << "Parsed command: [" << cmd.cmd << "]" << std::endl;
+
+        for (size_t i = 0; i < cmd.params.size(); i++)
+            std::cout << "Param " << i << ": [" << cmd.params[i] << "]" << std::endl;
+
+        if (cmd.cmd == "PING")
         {
             std::string token;
 
-            if (line.length() > 5)
-                token = line.substr(5);
+            if (!cmd.params.empty())
+                token = cmd.params[0];
 
             std::string reply = "PONG " + token + "\r\n";
-
+            send(clientFd, reply.c_str(), reply.length(), 0);
+        }
+        else if (cmd.cmd == "PRIVMSG")
+        {
+            std::string reply = "PRIVMSG received\r\n";
             send(clientFd, reply.c_str(), reply.length(), 0);
         }
 
@@ -248,6 +307,7 @@ int main(int argc, char const *argv[])
 
         return 1;
     }
+    
 
     return 0;
 }
