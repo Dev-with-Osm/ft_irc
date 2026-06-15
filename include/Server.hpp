@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 
 #include "Command.hpp"
+#include "Client.hpp"
 
 class Server
 {
@@ -23,7 +24,7 @@ private:
     int _serverFd;
 
     std::vector<pollfd> _pfds;
-    std::map<int, std::string> _clientBuffers;
+    std::map<int, Client> _clients;
 
     Server(const Server &other);
     Server &operator=(const Server &other);
@@ -44,9 +45,17 @@ private:
 
     void sendToClient(int clientFd, const std::string &message);
 
+    bool isValidNickname(const std::string &nickname) const;
+    bool isNicknameInUse(const std::string &nickname, int currentFd) const;
+
     void handleCommand(int clientFd, const Command &cmd);
     void handlePing(int clientFd, const Command &cmd);
     void handlePrivmsg(int clientFd, const Command &cmd);
+    void handlePass(int clientFd, const Command &cmd);
+    void handleNick(int clientFd, const Command &cmd);
+    void handleUser(int clientFd, const Command &cmd);
+
+    void tryRegisterClient(int clientFd);
 
     void cleanup();
 

@@ -2,7 +2,7 @@ NAME = ft_irc
 CC = c++
 CFLAGS = -Wall -Wextra -Werror -std=c++98
 
-SRCS = src/main.cpp src/Command.cpp src/Server.cpp
+SRCS = src/main.cpp src/Command.cpp src/Server.cpp src/Client.cpp
 OBJS = $(SRCS:.cpp=.o)
 
 all: $(NAME)
