@@ -47,6 +47,21 @@ private:
 
     bool isValidNickname(const std::string &nickname) const;
     bool isNicknameInUse(const std::string &nickname, int currentFd) const;
+    Client *findClientByNickname(const std::string &nickname);
+
+    Client *findClientByFd(int clientFd);
+    std::string getReplyNickname(const Client &client) const;
+
+    void sendServerReply(int clientFd,
+                        const std::string &code,
+                        const std::string &middle,
+                        const std::string &message);
+
+    bool requireRegistered(int clientFd, Client &client);
+
+    void sendPrivateMessage(const Client &sender,
+                            const Client &target,
+                            const std::string &message);
 
     void handleCommand(int clientFd, const Command &cmd);
     void handlePing(int clientFd, const Command &cmd);
@@ -56,7 +71,7 @@ private:
     void handleUser(int clientFd, const Command &cmd);
 
     void tryRegisterClient(int clientFd);
-
+    
     void cleanup();
 
 public:

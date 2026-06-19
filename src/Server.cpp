@@ -169,14 +169,19 @@ void Server::receiveFromClient(size_t &i)
         return;
     }
 
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
     std::string received(buffer, bytes);
 
-    _clients[clientFd].getBuffer() += received;
+    client->getBuffer() += received;
 
     std::cout << "Received chunk from fd "
               << clientFd << ": [" << received << "]" << std::endl;
 
-    extractCompleteLines(clientFd, _clients[clientFd].getBuffer());
+    extractCompleteLines(clientFd, client->getBuffer());
 }
 
 void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
@@ -187,6 +192,8 @@ void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
     {
         std::string line = clientBuffer.substr(0, pos);
 
+        clientBuffer.erase(0, pos + 1);
+
         if (!line.empty() && line[line.length() - 1] == '\r')
             line.erase(line.length() - 1);
 
@@ -196,8 +203,6 @@ void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
         Command cmd = parseCommand(line);
 
         handleCommand(clientFd, cmd);
-
-        clientBuffer.erase(0, pos + 1);
     }
 }
 
@@ -239,42 +244,86 @@ void Server::handlePing(int clientFd, const Command &cmd)
 
 void Server::handlePrivmsg(int clientFd, const Command &cmd)
 {
-    (void)cmd;
+    Client *sender = findClientByFd(clientFd);
 
-    sendToClient(clientFd, "PRIVMSG received\r\n ");
+    if (sender == NULL)
+        return;
+
+    if (!requireRegistered(clientFd, *sender))
+        return;
+
+    std::string senderNick = getReplyNickname(*sender);
+
+    if (cmd.params.empty())
+    {
+        sendServerReply(clientFd,
+                        "411",
+                        senderNick,
+                        "No recipient given (PRIVMSG)");
+        return;
+    }
+
+    if (cmd.params.size() < 2 || cmd.params[1].empty())
+    {
+        sendServerReply(clientFd,
+                        "412",
+                        senderNick,
+                        "No text to send");
+        return;
+    }
+
+    std::string targetNickname = cmd.params[0];
+    std::string message = cmd.params[1];
+
+    Client *target = findClientByNickname(targetNickname);
+
+    if (target == NULL || !target->isRegistered())
+    {
+        sendServerReply(clientFd,
+                        "401",
+                        senderNick + " " + targetNickname,
+                        "No such nick/channel");
+        return;
+    }
+
+    sendPrivateMessage(*sender, *target, message);
 }
 
 void Server::handlePass(int clientFd, const Command &cmd)
 {
-    std::map<int, Client>::iterator it = _clients.find(clientFd);
+    Client *client = findClientByFd(clientFd);
 
-    if (it == _clients.end())
+    if (client == NULL)
         return;
-
-    Client &client = it->second;
 
     if (cmd.params.empty())
     {
-        sendToClient(clientFd, ":server 461 * PASS :Not enough parameters\r\n");
+        sendServerReply(clientFd,
+                "461",
+                getReplyNickname(*client) + " PASS",
+                "Not enough parameters");
         return;
     }
 
-    if (client.isRegistered())
+    if (client->isRegistered())
     {
-        sendToClient(clientFd, ":server 462 * :You may not reregister\r\n");
+        sendServerReply(clientFd,
+                        "462",
+                        getReplyNickname(*client),
+                        "You may not reregister");
         return;
     }
 
     if (cmd.params[0] != _password)
     {
-        sendToClient(clientFd, ":server 464 * :Password incorrect\r\n");
+        sendServerReply(clientFd, "464", "*", "Password incorrect");
         return;
     }
 
-    client.setPassAccepted(true);
-    
+    client->setPassAccepted(true);
+
     std::cout << "PASS accepted for fd " << clientFd << std::endl;
-    
+
     tryRegisterClient(clientFd);
 }
 
@@ -356,16 +405,19 @@ bool Server::isNicknameInUse(const std::string &nickname, int currentFd) const
 
 void Server::handleNick(int clientFd, const Command &cmd)
 {
-    std::map<int, Client>::iterator it = _clients.find(clientFd);
+    Client *client = findClientByFd(clientFd);
 
-    if (it == _clients.end())
+    if (client == NULL)
         return;
-    
-    Client &client = it->second;
+
+    std::string replyNick = getReplyNickname(*client);
 
     if (cmd.params.empty())
     {
-        sendToClient(clientFd, ":server 431 * :No nickname given\r\n");
+        sendServerReply(clientFd,
+                        "431",
+                        replyNick,
+                        "No nickname given");
         return;
     }
 
@@ -373,16 +425,23 @@ void Server::handleNick(int clientFd, const Command &cmd)
 
     if (!isValidNickname(nickname))
     {
-        sendToClient(clientFd, ":server 432 * " + nickname + " :Erroneous nickname\r\n");
+        sendServerReply(clientFd,
+                        "432",
+                        replyNick + " " + nickname,
+                        "Erroneous nickname");
         return;
     }
 
     if (isNicknameInUse(nickname, clientFd))
     {
-        sendToClient(clientFd, ":server 433 * " + nickname + " :Nickname is already in use\r\n");
+        sendServerReply(clientFd,
+                        "433",
+                        replyNick + " " + nickname,
+                        "Nickname is already in use");
         return;
     }
-    client.setNickname(nickname);
+
+    client->setNickname(nickname);
 
     std::cout << "NICK set for fd "
               << clientFd << ": " << nickname << std::endl;
@@ -392,31 +451,30 @@ void Server::handleNick(int clientFd, const Command &cmd)
 
 void Server::handleUser(int clientFd, const Command &cmd)
 {
-    std::map<int, Client>::iterator it = _clients.find(clientFd);
+    Client *client = findClientByFd(clientFd);
 
-    if (it == _clients.end())
+    if (client == NULL)
         return;
-    
-    Client &client = it->second;
 
-    if (client.isRegistered())
+    if (client->isRegistered())
     {
-        std::string nick = "*";
-
-        if (!client.getNickname().empty())
-            nick = client.getNickname();
-
-        sendToClient(clientFd, ":server 462 " + nick + " :You may not reregister\r\n");
+        sendServerReply(clientFd,
+                        "462",
+                        getReplyNickname(*client),
+                        "You may not reregister");
         return;
     }
 
     if (cmd.params.size() < 4)
     {
-        sendToClient(clientFd, ":server 461 * USER :Not enough parameters\r\n");
+        sendServerReply(clientFd,
+                "461",
+                getReplyNickname(*client) + " USER",
+                "Not enough parameters");
         return;
     }
 
-    client.setUsername(cmd.params[0]);
+    client->setUsername(cmd.params[0]);
 
     std::cout << "USER set for fd "
               << clientFd << ": " << cmd.params[0] << std::endl;
@@ -426,32 +484,89 @@ void Server::handleUser(int clientFd, const Command &cmd)
 
 void Server::tryRegisterClient(int clientFd)
 {
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    if (client->isRegistered())
+        return;
+
+    if (!client->isPassAccepted())
+        return;
+
+    if (client->getNickname().empty())
+        return;
+
+    if (client->getUsername().empty())
+        return;
+
+    client->setRegistered(true);
+
+    sendServerReply(clientFd,
+                    "001",
+                    client->getNickname(),
+                    "Welcome to ft_irc, " + client->getNickname());
+
+    std::cout << "Client registered: fd "
+              << clientFd << " nick=" << client->getNickname()
+              << " user=" << client->getUsername() << std::endl;
+}
+
+Client *Server::findClientByNickname(const std::string &nickname)
+{
+    std::map<int, Client>::iterator it;
+
+    for (it = _clients.begin(); it != _clients.end(); ++it)
+    {
+        if (toUpper(it->second.getNickname()) == toUpper(nickname))
+            return &(it->second);
+    }
+
+    return NULL;
+}
+
+Client *Server::findClientByFd(int clientFd)
+{
     std::map<int, Client>::iterator it = _clients.find(clientFd);
 
     if (it == _clients.end())
-        return;
+        return NULL;
 
-    Client &client = it->second;
+    return &(it->second);
+}
 
-    if (client.isRegistered())
-        return;
-
-    if (!client.isPassAccepted())
-        return;
-
+std::string Server::getReplyNickname(const Client &client) const
+{
     if (client.getNickname().empty())
-        return;
+        return "*";
 
-    if (client.getUsername().empty())
-        return;
+    return client.getNickname();
+}
 
-    client.setRegistered(true);
-
+void Server::sendServerReply(int clientFd,
+                             const std::string &code,
+                             const std::string &middle,
+                             const std::string &message)
+{
     sendToClient(clientFd,
-                 std::string(":server 001 ") + client.getNickname()
-                 + " :Welcome to ft_irc, " + client.getNickname() + "\r\n");
+                 ":server " + code + " " + middle + " :" + message + "\r\n");
+}
 
-    std::cout << "Client registered: fd "
-              << clientFd << " nick=" << client.getNickname()
-              << " user=" << client.getUsername() << std::endl;
+bool Server::requireRegistered(int clientFd, Client &client)
+{
+    if (client.isRegistered())
+        return true;
+
+    sendServerReply(clientFd, "451", "*", "You have not registered");
+    return false;
+}
+
+void Server::sendPrivateMessage(const Client &sender,
+                                const Client &target,
+                                const std::string &message)
+{
+    sendToClient(target.getFd(),
+                 ":" + sender.getNickname() + " PRIVMSG "
+                 + target.getNickname() + " :" + message + "\r\n");
 }
