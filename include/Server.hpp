@@ -9,6 +9,8 @@
 
 #include "Command.hpp"
 #include "Client.hpp"
+#include "Channel.hpp"
+
 
 class Server
 {
@@ -25,6 +27,7 @@ private:
 
     std::vector<pollfd> _pfds;
     std::map<int, Client> _clients;
+    std::map<std::string, Channel> _channels;
 
     Server(const Server &other);
     Server &operator=(const Server &other);
@@ -47,8 +50,9 @@ private:
 
     bool isValidNickname(const std::string &nickname) const;
     bool isNicknameInUse(const std::string &nickname, int currentFd) const;
-    Client *findClientByNickname(const std::string &nickname);
+    bool isValidChannelName(const std::string &channelName) const;
 
+    Client *findClientByNickname(const std::string &nickname);
     Client *findClientByFd(int clientFd);
     std::string getReplyNickname(const Client &client) const;
 
@@ -69,9 +73,14 @@ private:
     void handlePass(int clientFd, const Command &cmd);
     void handleNick(int clientFd, const Command &cmd);
     void handleUser(int clientFd, const Command &cmd);
+    void handleJoin(int clientFd, const Command &cmd);
+
 
     void tryRegisterClient(int clientFd);
+
+    void broadcastToChannel(Channel &channel, std::string message);
     
+    void removeClientFromChannels(int clientFd);
     void cleanup();
 
 public:

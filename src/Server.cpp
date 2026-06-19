@@ -141,6 +141,8 @@ void Server::removeClient(size_t &i)
 
     std::cout << "Client disconnected, fd = " << clientFd << std::endl;
 
+    removeClientFromChannels(clientFd);
+
     close(clientFd);
     _clients.erase(clientFd);
     _pfds.erase(_pfds.begin() + i);
@@ -227,6 +229,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handleNick(clientFd, cmd);
     else if (cmd.cmd == "USER")
         handleUser(clientFd, cmd);
+    else if (cmd.cmd == "JOIN")
+        handleJoin(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -365,6 +369,7 @@ void Server::cleanup()
         close(_serverFd);
 
     _pfds.clear();
+    _channels.clear();
     _clients.clear();
     _serverFd = -1;
 }
@@ -557,7 +562,7 @@ bool Server::requireRegistered(int clientFd, Client &client)
 {
     if (client.isRegistered())
         return true;
-
+ 
     sendServerReply(clientFd, "451", "*", "You have not registered");
     return false;
 }
@@ -569,4 +574,99 @@ void Server::sendPrivateMessage(const Client &sender,
     sendToClient(target.getFd(),
                  ":" + sender.getNickname() + " PRIVMSG "
                  + target.getNickname() + " :" + message + "\r\n");
+}
+
+bool Server::isValidChannelName(const std::string &channelName) const
+{
+    if (channelName.length() < 2)
+        return false;
+
+    char prefix = channelName[0];
+
+    if (prefix != '#' && prefix != '&' && prefix != '+' && prefix != '!')
+        return false;
+
+    for (size_t i = 0; i < channelName.length(); i++)
+    {
+        if (channelName[i] == ' ' ||
+            channelName[i] == ',' ||
+            channelName[i] == ':' ||
+            channelName[i] == 7)
+            return false;
+    }
+
+    return true;
+}
+
+void Server::handleJoin(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+    
+    if (!requireRegistered(clientFd, *client))
+        return;
+    
+    std::string replyNick = getReplyNickname(*client);
+
+    if (cmd.params.empty())
+    {
+        sendServerReply(clientFd,
+                        "461",
+                        replyNick + " JOIN",
+                        "Not enough parameters");
+        return;
+    }
+
+    std::string channelName = cmd.params[0];
+
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    if (_channels.find(channelName) == _channels.end())
+        _channels[channelName] = Channel(channelName);
+
+    Channel &channel = _channels[channelName];
+
+    if (channel.hasClient(clientFd))
+        return;
+
+    channel.addClient(client);
+
+    std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";   
+    
+    broadcastToChannel(channel, joinMessage);
+
+    std::cout << client->getNickname()
+              << " joined channel " << channelName << std::endl;
+}
+
+void Server::removeClientFromChannels(int clientFd)
+{
+    std::map<std::string, Channel>::iterator it;
+
+    for (it = _channels.begin(); it != _channels.end(); ++it)
+        it->second.removeClient(clientFd);
+}
+
+void Server::broadcastToChannel(Channel &channel, std::string message)
+{
+    const std::map<int, Client *> &clients = channel.getClients();
+
+    std::map<int, Client*>::const_iterator it;
+
+    for (it = clients.begin(); it != clients.end(); ++it)
+    {
+       Client *client = it->second; 
+
+        if (client != NULL)
+            sendToClient(client->getFd(), message);
+    }   
 }
