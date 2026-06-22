@@ -233,6 +233,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handleJoin(clientFd, cmd);
     else if (cmd.cmd == "PART")
         handlePart(clientFd, cmd);
+    else if (cmd.cmd == "KICK")
+        handleKick(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -831,5 +833,105 @@ void Server::handlePart(int clientFd, const Command &cmd)
         _channels.erase(channelName);
 }
 
+void Server::handleKick(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
 
-// ! 2. handlePart() is good, but the channel lookup can be cleaner
+    if (client == NULL)
+        return;
+    
+    if (!requireRegistered(clientFd, *client))
+        return;
+
+    std::string replyNick = getReplyNickname(*client);
+
+    if (cmd.params.size() < 2)
+    {
+        sendServerReply(clientFd,
+                "461",
+                replyNick + " KICK",
+                "Not enough parameters");
+        return;
+    }
+
+    std::string channelName = cmd.params[0];
+    std::string targetNick = cmd.params[1];
+    std::string reason;
+
+    if (cmd.params.size() > 2)
+        reason = cmd.params[2];
+    
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+
+    if (it == _channels.end())
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Channel &channel = it->second;
+
+    if (!channel.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        replyNick + " " + channelName,
+                        "You're not on that channel");
+        return;
+    }
+
+    if (!channel.isOperator(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "482",
+                        replyNick + " " + channelName,
+                        "You're not channel operator");
+        return;
+    }
+    
+    Client *targetClient = findClientByNickname(targetNick);
+
+    if (targetClient == NULL)
+    {
+        sendServerReply(clientFd,
+                        "401",
+                        replyNick + " " + targetNick,
+                        "No such nick/channel");
+        return;
+    }
+
+    if (!channel.hasClient(targetClient->getFd()))
+    {
+        sendServerReply(clientFd,
+                        "441",
+                        replyNick + " " + targetNick + " " + channelName,
+                        "They aren't on that channel");
+        return;
+    }
+
+    std::string message = ":" + replyNick + " KICK " + channelName + " " + targetNick;
+
+    if (!reason.empty())
+        message += " :" + reason;
+
+    message += "\r\n";
+    
+    broadcastToChannel(channel, message, NULL);
+
+    channel.removeClient(targetClient->getFd());
+    
+    if (channel.isEmpty())
+        _channels.erase(channelName);
+}
