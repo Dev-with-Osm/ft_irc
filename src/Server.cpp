@@ -324,12 +324,22 @@ void Server::handlePrivmsgToChannel(const std::string &target,
                         "You're not on that channel");
         return;
     }
-    std::string channelMessage = ":" + sender->getNickname() + " PRIVMSG " + it->second.getName() + " :" + message + "\r\n";
+    std::string channelMessage = ":" +
+                                sender->getNickname()
+                                + " PRIVMSG " +
+                                it->second.getName() +
+                                " :" +
+                                message +
+                                "\r\n";
 
     broadcastToChannel(it->second, channelMessage, sender);
 }
 
-void Server::handlePrivmsgToUser(const std::string &target, int clientFd, const std::string &senderNick, Client *sender, const std::string &message)
+void Server::handlePrivmsgToUser(const std::string &target,
+                                int clientFd,
+                                const std::string &senderNick,
+                                Client *sender,
+                                const std::string &message)
 {
     Client *targetClient = findClientByNickname(target);
 
@@ -732,7 +742,7 @@ void Server::broadcastToChannel(Channel &channel, const std::string &message, Cl
 
     for (it = clients.begin(); it != clients.end(); ++it)
     {
-       Client *client = it->second; 
+        Client *client = it->second; 
 
         if (client != NULL && client != sender)
             sendToClient(client->getFd(), message);
@@ -761,12 +771,14 @@ void Server::handlePart(int clientFd, const Command &cmd)
     
     if (!requireRegistered(clientFd, *client))
         return;
+
+    std::string replyNick = getReplyNickname(*client);
     
     if (cmd.params.empty())
     {
         sendServerReply(clientFd,
                         "461",
-                        client->getNickname() + " PART",
+                        replyNick + " PART",
                         "Not enough parameters");
         return;
     }
@@ -777,35 +789,34 @@ void Server::handlePart(int clientFd, const Command &cmd)
     {
         sendServerReply(clientFd,
                         "403",
-                        client->getNickname() + " " + channelName,
+                        replyNick + " " + channelName,
                         "No such channel");
         return;
     }
 
-    bool doesChannelExist = _channels.find(channelName) != _channels.end();
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
 
-    if (!doesChannelExist)
+    if (it == _channels.end())
     {
         sendServerReply(clientFd,
                         "403",
-                        client->getNickname() + " " + channelName,
+                        replyNick + " " + channelName,
                         "No such channel");
         return;
     }
 
-    Channel &channel = _channels[channelName];
-
+    Channel &channel = it->second;
 
     if (!channel.hasClient(clientFd))
     {
         sendServerReply(clientFd,
                         "442",
-                        client->getNickname() + " " + channelName,
+                        replyNick + " " + channelName,
                         "You're not on that channel");
         return;
     }
 
-    std::string partMessage = ":" + client->getNickname() + " PART " + channelName;
+    std::string partMessage = ":" + replyNick + " PART " + channelName;
 
     if (cmd.params.size() >= 2 && !cmd.params[1].empty())
         partMessage += " :" + cmd.params[1];
