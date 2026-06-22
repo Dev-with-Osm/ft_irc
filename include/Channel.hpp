@@ -11,6 +11,7 @@ class Channel
     private:
         std::string _name;
         std::map<int, Client *> _clients;
+        std::map<int, Client *> _operators;
 
     public:
         Channel();
@@ -22,6 +23,12 @@ class Channel
         bool hasClient(int clientFd) const;
         void addClient(Client *client);
         void removeClient(int clientFd);
+
+        void addOperator(Client *client);
+        void removeOperator(int clientFd);
+        bool isOperator(int clientFd) const;
+
+        bool isEmpty() const;
 
         const std::map<int, Client *> &getClients() const;
 };

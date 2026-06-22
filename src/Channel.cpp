@@ -37,9 +37,32 @@ void Channel::addClient(Client *client)
 void Channel::removeClient(int clientFd)
 {
     _clients.erase(clientFd);
+    _operators.erase(clientFd);
 }
 
 const std::map<int, Client *> &Channel::getClients() const
 {
     return _clients;
+}
+
+void Channel::addOperator(Client *client)
+{
+    if (client == NULL)
+        return;
+    _operators[client->getFd()] = client;
+}
+
+void Channel::removeOperator(int clientFd)
+{
+    _operators.erase(clientFd);
+}
+
+bool Channel::isOperator(int clientFd) const
+{
+    return _operators.find(clientFd) != _operators.end();
+}
+
+bool Channel::isEmpty() const
+{
+    return _clients.empty();
 }

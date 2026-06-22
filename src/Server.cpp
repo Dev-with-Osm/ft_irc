@@ -231,6 +231,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handleUser(clientFd, cmd);
     else if (cmd.cmd == "JOIN")
         handleJoin(clientFd, cmd);
+    else if (cmd.cmd == "PART")
+        handlePart(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -680,7 +682,9 @@ void Server::handleJoin(int clientFd, const Command &cmd)
         return;
     }
 
-    if (_channels.find(channelName) == _channels.end())
+    bool channelDoesNotExist = _channels.find(channelName) == _channels.end();
+
+    if (channelDoesNotExist)
         _channels[channelName] = Channel(channelName);
 
     Channel &channel = _channels[channelName];
@@ -689,6 +693,9 @@ void Server::handleJoin(int clientFd, const Command &cmd)
         return;
 
     channel.addClient(client);
+
+    if (channelDoesNotExist)
+        channel.addOperator(client);
 
     std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";
     
@@ -700,10 +707,21 @@ void Server::handleJoin(int clientFd, const Command &cmd)
 
 void Server::removeClientFromChannels(int clientFd)
 {
-    std::map<std::string, Channel>::iterator it;
+    std::map<std::string, Channel>::iterator it = _channels.begin();
 
-    for (it = _channels.begin(); it != _channels.end(); ++it)
+    while (it != _channels.end())
+    {
         it->second.removeClient(clientFd);
+
+        if (it->second.isEmpty())
+        {
+            std::map<std::string, Channel>::iterator toErase = it;
+            ++it;
+            _channels.erase(toErase);
+        }
+        else
+            ++it;
+    }
 }
 
 void Server::broadcastToChannel(Channel &channel, const std::string &message, Client *sender)
@@ -733,3 +751,74 @@ bool Server::isChannelTarget(const std::string &channelName) const
     
     return true;
 }
+
+void Server::handlePart(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+    
+    if (!requireRegistered(clientFd, *client))
+        return;
+    
+    if (cmd.params.empty())
+    {
+        sendServerReply(clientFd,
+                        "461",
+                        client->getNickname() + " PART",
+                        "Not enough parameters");
+        return;
+    }
+
+    std::string channelName = cmd.params[0];
+
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        client->getNickname() + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    bool doesChannelExist = _channels.find(channelName) != _channels.end();
+
+    if (!doesChannelExist)
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        client->getNickname() + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Channel &channel = _channels[channelName];
+
+
+    if (!channel.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        client->getNickname() + " " + channelName,
+                        "You're not on that channel");
+        return;
+    }
+
+    std::string partMessage = ":" + client->getNickname() + " PART " + channelName;
+
+    if (cmd.params.size() >= 2 && !cmd.params[1].empty())
+        partMessage += " :" + cmd.params[1];
+
+    partMessage += "\r\n";
+    
+    broadcastToChannel(channel, partMessage, NULL);
+
+    channel.removeClient(clientFd);
+
+    if (channel.isEmpty())
+        _channels.erase(channelName);
+}
+
+
+// ! 2. handlePart() is good, but the channel lookup can be cleaner

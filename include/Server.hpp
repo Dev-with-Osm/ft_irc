@@ -75,7 +75,7 @@ private:
     void handleNick(int clientFd, const Command &cmd);
     void handleUser(int clientFd, const Command &cmd);
     void handleJoin(int clientFd, const Command &cmd);
-
+    void handlePart(int clientFd, const Command &cmd);
 
     void tryRegisterClient(int clientFd);
     
