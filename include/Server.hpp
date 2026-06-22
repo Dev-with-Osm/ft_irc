@@ -51,6 +51,7 @@ private:
     bool isValidNickname(const std::string &nickname) const;
     bool isNicknameInUse(const std::string &nickname, int currentFd) const;
     bool isValidChannelName(const std::string &channelName) const;
+    bool isChannelTarget(const std::string &channelName) const;
 
     Client *findClientByNickname(const std::string &nickname);
     Client *findClientByFd(int clientFd);
@@ -77,8 +78,12 @@ private:
 
 
     void tryRegisterClient(int clientFd);
+    
+    void handlePrivmsgToUser(const std::string &target, int clientFd, const std::string &senderNick, Client *sender, const std::string &message);
+    void handlePrivmsgToChannel(const std::string &target, Client *sender, const std::string &message, int clientFd, const std::string &senderNick);
 
-    void broadcastToChannel(Channel &channel, std::string message);
+
+    void broadcastToChannel(Channel &channel, const std::string &message, Client *sender);
     
     void removeClientFromChannels(int clientFd);
     void cleanup();

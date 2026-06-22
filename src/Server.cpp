@@ -276,21 +276,71 @@ void Server::handlePrivmsg(int clientFd, const Command &cmd)
         return;
     }
 
-    std::string targetNickname = cmd.params[0];
+    std::string target = cmd.params[0];
+
+    bool isTargetChannel = isChannelTarget(target);
+
+    if (isTargetChannel && !isValidChannelName(target))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        senderNick + " " + target,
+                        "No such channel");
+        return;
+    }
+
     std::string message = cmd.params[1];
 
-    Client *target = findClientByNickname(targetNickname);
+    if (isTargetChannel)
+        handlePrivmsgToChannel(target, sender, message, clientFd, senderNick);
+    else
+        handlePrivmsgToUser(target, clientFd, senderNick, sender, message);
+}
 
-    if (target == NULL || !target->isRegistered())
+void Server::handlePrivmsgToChannel(const std::string &target,
+                                    Client *sender,
+                                    const std::string &message,
+                                    int clientFd,
+                                    const std::string &senderNick)
+{
+    std::map<std::string, Channel>::iterator it  = _channels.find(target);
+    
+    if (it == _channels.end())
     {
         sendServerReply(clientFd,
                         "401",
-                        senderNick + " " + targetNickname,
+                        senderNick + " " + target,
                         "No such nick/channel");
         return;
     }
 
-    sendPrivateMessage(*sender, *target, message);
+    if (!it->second.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        senderNick + " " + target,
+                        "You're not on that channel");
+        return;
+    }
+    std::string channelMessage = ":" + sender->getNickname() + " PRIVMSG " + it->second.getName() + " :" + message + "\r\n";
+
+    broadcastToChannel(it->second, channelMessage, sender);
+}
+
+void Server::handlePrivmsgToUser(const std::string &target, int clientFd, const std::string &senderNick, Client *sender, const std::string &message)
+{
+    Client *targetClient = findClientByNickname(target);
+
+    if (targetClient == NULL || !targetClient->isRegistered())
+    {
+        sendServerReply(clientFd,
+                        "401",
+                        senderNick + " " + target,
+                        "No such nick/channel");
+        return;
+    }
+
+    sendPrivateMessage(*sender, *targetClient, message);
 }
 
 void Server::handlePass(int clientFd, const Command &cmd)
@@ -640,9 +690,9 @@ void Server::handleJoin(int clientFd, const Command &cmd)
 
     channel.addClient(client);
 
-    std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";   
+    std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";
     
-    broadcastToChannel(channel, joinMessage);
+    broadcastToChannel(channel, joinMessage, NULL);
 
     std::cout << client->getNickname()
               << " joined channel " << channelName << std::endl;
@@ -656,7 +706,7 @@ void Server::removeClientFromChannels(int clientFd)
         it->second.removeClient(clientFd);
 }
 
-void Server::broadcastToChannel(Channel &channel, std::string message)
+void Server::broadcastToChannel(Channel &channel, const std::string &message, Client *sender)
 {
     const std::map<int, Client *> &clients = channel.getClients();
 
@@ -666,7 +716,20 @@ void Server::broadcastToChannel(Channel &channel, std::string message)
     {
        Client *client = it->second; 
 
-        if (client != NULL)
+        if (client != NULL && client != sender)
             sendToClient(client->getFd(), message);
     }   
+}
+
+bool Server::isChannelTarget(const std::string &channelName) const
+{
+    if (channelName.empty())
+        return false;
+
+    char prefix = channelName[0];
+    
+    if (prefix != '#' && prefix != '&' && prefix != '+' && prefix != '!')
+        return false;
+    
+    return true;
 }
