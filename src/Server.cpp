@@ -235,6 +235,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handlePart(clientFd, cmd);
     else if (cmd.cmd == "KICK")
         handleKick(clientFd, cmd);
+    else if (cmd.cmd == "INVITE")
+        handleInvite(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -934,4 +936,96 @@ void Server::handleKick(int clientFd, const Command &cmd)
     
     if (channel.isEmpty())
         _channels.erase(channelName);
+}
+
+void Server::handleInvite(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    if (!requireRegistered(clientFd, *client))
+        return;
+    
+    std::string replyNick = getReplyNickname(*client);
+
+    if (cmd.params.size() < 2)
+    {
+        sendServerReply(clientFd,
+                "461",
+                replyNick + " INVITE",
+                "Not enough parameters");
+        return;
+    }
+
+    std::string targetNick = cmd.params[0];
+    std::string channelName = cmd.params[1];
+
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Client *targetClient = findClientByNickname(targetNick);
+
+    if (targetClient == NULL || !targetClient->isRegistered())
+    {
+        sendServerReply(clientFd,
+                        "401",
+                        replyNick + " " + targetNick,
+                        "No such nick/channel");
+        return;
+    }
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+
+    if (it == _channels.end())
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Channel &channel = it->second;
+
+    if (!channel.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        replyNick + " " + channelName,
+                        "You're not on that channel");
+        return;
+    }
+
+    if (!channel.isOperator(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "482",
+                        replyNick + " " + channelName,
+                        "You're not channel operator");
+        return;
+    }
+
+    if (channel.hasClient(targetClient->getFd()))
+    {
+        sendServerReply(clientFd,
+                        "443",
+                        replyNick + " " + targetNick + " " + channelName,
+                        "is already on channel");
+        return;
+    }
+
+    std::string senderMsg = ":server 341 " + replyNick + " " + targetNick + " " + channelName + "\r\n";
+    std::string targetMsg = ":" + replyNick + " INVITE " + targetNick + " " + channelName + "\r\n";
+
+    sendToClient(clientFd, senderMsg);
+    sendToClient(targetClient->getFd(), targetMsg);
+    
 }
