@@ -12,6 +12,7 @@ class Channel
         std::string _name;
         std::map<int, Client *> _clients;
         std::map<int, Client *> _operators;
+        std::string _topic;
 
     public:
         Channel();
@@ -27,6 +28,9 @@ class Channel
         void addOperator(Client *client);
         void removeOperator(int clientFd);
         bool isOperator(int clientFd) const;
+
+        const std::string &getTopic() const;
+        void setTopic(const std::string &topic);
 
         bool isEmpty() const;
 

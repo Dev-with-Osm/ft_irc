@@ -237,6 +237,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handleKick(clientFd, cmd);
     else if (cmd.cmd == "INVITE")
         handleInvite(clientFd, cmd);
+    else if (cmd.cmd == "TOPIC")
+        handleTopic(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -1028,4 +1030,78 @@ void Server::handleInvite(int clientFd, const Command &cmd)
     sendToClient(clientFd, senderMsg);
     sendToClient(targetClient->getFd(), targetMsg);
     
+}
+
+void Server::handleTopic(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    if (!requireRegistered(clientFd, *client))
+        return;
+
+    std::string replyNick = getReplyNickname(*client);
+
+    if (cmd.params.empty())
+    {
+        sendServerReply(clientFd,
+                "461",
+                replyNick + " TOPIC",
+                "Not enough parameters");
+        return;
+    }
+
+    std::string channelName = cmd.params[0];
+
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+
+    if (it == _channels.end())
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Channel &channel = it->second;
+
+    if (!channel.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        replyNick + " " + channelName,
+                        "You're not on that channel");
+        return;
+    }
+
+    std::string topic = channel.getTopic();
+    std::string message;
+
+    if (cmd.params.size() == 1)
+    {
+        if (topic.empty())
+            message = ":server 331 " + replyNick + " " + channelName + " :No topic is set\r\n";
+        else
+            message = ":server 332 " + replyNick + " " + channelName + " :" + topic + "\r\n";
+        sendToClient(clientFd, message);
+    }
+    else
+    {
+        std::string newTopic = cmd.params[1];
+        channel.setTopic(newTopic);
+        message = ":" + replyNick + " TOPIC " + channelName + " :" + newTopic + "\r\n";
+        broadcastToChannel(channel, message, NULL);
+    }
 }

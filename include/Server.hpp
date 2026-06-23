@@ -78,6 +78,7 @@ private:
     void handlePart(int clientFd, const Command &cmd);
     void handleKick(int clientFd, const Command &cmd);
     void handleInvite(int clientFd, const Command &cmd);
+    void handleTopic(int clientFd, const Command &cmd);
 
     void tryRegisterClient(int clientFd);
     
