@@ -1101,6 +1101,14 @@ void Server::handleTopic(int clientFd, const Command &cmd)
     }
     else
     {
+        if (channel.isTopicRestricted() && !channel.isOperator(clientFd))
+        {
+            sendServerReply(clientFd,
+                        "482",
+                        replyNick + " " + channelName,
+                        "You're not channel operator");
+            return;
+        }
         std::string newTopic = cmd.params[1];
         channel.setTopic(newTopic);
         message = ":" + replyNick + " TOPIC " + channelName + " :" + newTopic + "\r\n";
