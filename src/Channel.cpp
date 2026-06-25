@@ -42,6 +42,7 @@ void Channel::removeClient(int clientFd)
 {
     _clients.erase(clientFd);
     _operators.erase(clientFd);
+    _invitedClients.erase(clientFd);
 }
 
 const std::map<int, Client *> &Channel::getClients() const
@@ -99,4 +100,22 @@ bool Channel::isTopicRestricted() const
 void Channel::setTopicRestricted(bool value)
 {
     _topicRestricted = value;
+}
+
+void Channel::addInvitedClient(Client *client)
+{
+    if (client == NULL)
+        return;
+
+    _invitedClients[client->getFd()] = client;
+}
+
+void Channel::removeInvitedClient(int clientFd)
+{
+    _invitedClients.erase(clientFd);
+}
+
+bool Channel::isInvited(int clientFd) const
+{
+    return _invitedClients.find(clientFd) != _invitedClients.end();
 }

@@ -710,17 +710,25 @@ void Server::handleJoin(int clientFd, const Command &cmd)
     if (channel.hasClient(clientFd))
         return;
 
+    if (channel.isInviteOnly() && !channel.isInvited(clientFd))
+    {
+        sendServerReply(clientFd,
+                    "473",
+                    replyNick + " " + channelName,
+                    "Cannot join channel (+i)");
+        return;
+    }
+
     channel.addClient(client);
 
     if (channelDoesNotExist)
         channel.addOperator(client);
 
     std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";
-    
-    broadcastToChannel(channel, joinMessage, NULL);
 
-    std::cout << client->getNickname()
-              << " joined channel " << channelName << std::endl;
+    channel.removeInvitedClient(clientFd);
+
+    broadcastToChannel(channel, joinMessage, NULL);
 }
 
 void Server::removeClientFromChannels(int clientFd)
@@ -1025,6 +1033,8 @@ void Server::handleInvite(int clientFd, const Command &cmd)
                         "is already on channel");
         return;
     }
+
+    channel.addInvitedClient(targetClient);
 
     std::string senderMsg = ":server 341 " + replyNick + " " + targetNick + " " + channelName + "\r\n";
     std::string targetMsg = ":" + replyNick + " INVITE " + targetNick + " " + channelName + "\r\n";
