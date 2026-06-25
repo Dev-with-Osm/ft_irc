@@ -239,6 +239,8 @@ void Server::handleCommand(int clientFd, const Command &cmd)
         handleInvite(clientFd, cmd);
     else if (cmd.cmd == "TOPIC")
         handleTopic(clientFd, cmd);
+    else if (cmd.cmd == "MODE")
+        handleMode(clientFd, cmd);
     else
         std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
 }
@@ -1103,5 +1105,158 @@ void Server::handleTopic(int clientFd, const Command &cmd)
         channel.setTopic(newTopic);
         message = ":" + replyNick + " TOPIC " + channelName + " :" + newTopic + "\r\n";
         broadcastToChannel(channel, message, NULL);
+    }
+}
+
+void Server::handleMode(int clientFd, const Command &cmd)
+{
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    if (!requireRegistered(clientFd, *client))
+        return;
+
+    std::string replyNick = getReplyNickname(*client);
+
+    if (cmd.params.size() < 2)
+    {
+        sendServerReply(clientFd,
+                "461",
+                replyNick + " MODE",
+                "Not enough parameters");
+        return;
+    }
+
+    std::string channelName = cmd.params[0];
+
+    if (!isValidChannelName(channelName))
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+
+    if (it == _channels.end())
+    {
+        sendServerReply(clientFd,
+                        "403",
+                        replyNick + " " + channelName,
+                        "No such channel");
+        return;
+    }
+
+    Channel &channel = it->second;
+
+    if (!channel.hasClient(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "442",
+                        replyNick + " " + channelName,
+                        "You're not on that channel");
+        return;
+    }
+
+    if (!channel.isOperator(clientFd))
+    {
+        sendServerReply(clientFd,
+                        "482",
+                        replyNick + " " + channelName,
+                        "You're not channel operator");
+        return;
+    }
+
+    std::string modeString = cmd.params[1];
+    char currentSign = '\0';
+    char lastOutputSign = '\0';
+    std::string appliedModes;
+    
+    for (size_t i = 0; i < modeString.length(); i++)
+    {
+        char mode = modeString[i];
+        
+        if (mode == '+' || mode == '-')
+        {
+            currentSign = mode;
+            continue;
+        }
+
+        if (currentSign == '\0')
+        {
+            sendServerReply(clientFd,
+                        "472",
+                        replyNick + " " + std::string(1, mode),
+                        "is unknown mode char to me");
+            continue;
+        }
+        
+        if (mode == 'i')
+        {
+            if (currentSign == '+' && !channel.isInviteOnly())
+            {
+                channel.setInviteOnly(true);
+
+                if (lastOutputSign != '+')
+                {
+                    appliedModes += "+";
+                    lastOutputSign = '+';
+                }
+                appliedModes += "i";
+            }
+            else if (currentSign == '-' && channel.isInviteOnly())
+            {
+                channel.setInviteOnly(false);
+
+                if (lastOutputSign != '-')
+                {
+                    appliedModes += "-";
+                    lastOutputSign = '-';
+                }
+                appliedModes += "i";
+            }
+        }
+        else if (mode == 't')
+        {
+            if (currentSign == '+' && !channel.isTopicRestricted())
+            {
+                channel.setTopicRestricted(true);
+
+                if (lastOutputSign != '+')
+                {
+                    appliedModes += "+";
+                    lastOutputSign = '+';
+                }
+                appliedModes += "t";
+            }
+            else if (currentSign == '-' && channel.isTopicRestricted())
+            {
+                channel.setTopicRestricted(false);
+
+                if (lastOutputSign != '-')
+                {
+                    appliedModes += "-";
+                    lastOutputSign = '-';
+                }
+                appliedModes += "t";
+            }
+        }
+        else
+        {
+            sendServerReply(clientFd,
+                        "472",
+                        replyNick + " " + std::string(1, mode),
+                        "is unknown mode char to me");
+        }
+    }
+
+    if (!appliedModes.empty())
+    {
+        std::string modeMessage = ":" + replyNick + " MODE " + channelName + " " + appliedModes + "\r\n";
+        broadcastToChannel(channel, modeMessage, NULL);
     }
 }

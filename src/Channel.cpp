@@ -3,12 +3,16 @@
 #include <cstddef>
 
 Channel::Channel()
-    : _name("")
+    : _name(""),
+      _inviteOnly(false),
+      _topicRestricted(false)
 {
 }
 
 Channel::Channel(const std::string &name)
-    : _name(name)
+    : _name(name),
+      _inviteOnly(false),
+      _topicRestricted(false)
 {
 }
 
@@ -75,4 +79,24 @@ const std::string &Channel::getTopic() const
 void Channel::setTopic(const std::string &topic)
 {
     _topic = topic;
+}
+
+bool Channel::isInviteOnly() const
+{
+    return _inviteOnly;
+}
+
+void Channel::setInviteOnly(bool value)
+{
+    _inviteOnly = value;
+}
+
+bool Channel::isTopicRestricted() const
+{
+    return _topicRestricted;
+}
+
+void Channel::setTopicRestricted(bool value)
+{
+    _topicRestricted = value;
 }

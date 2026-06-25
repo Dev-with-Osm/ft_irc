@@ -13,6 +13,8 @@ class Channel
         std::map<int, Client *> _clients;
         std::map<int, Client *> _operators;
         std::string _topic;
+        bool _inviteOnly;
+        bool _topicRestricted;
 
     public:
         Channel();
@@ -31,6 +33,12 @@ class Channel
 
         const std::string &getTopic() const;
         void setTopic(const std::string &topic);
+
+        bool isInviteOnly() const;
+        void setInviteOnly(bool value);
+
+        bool isTopicRestricted() const;
+        void setTopicRestricted(bool value);
 
         bool isEmpty() const;
 

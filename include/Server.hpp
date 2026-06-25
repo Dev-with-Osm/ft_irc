@@ -79,6 +79,7 @@ private:
     void handleKick(int clientFd, const Command &cmd);
     void handleInvite(int clientFd, const Command &cmd);
     void handleTopic(int clientFd, const Command &cmd);
+    void handleMode(int clientFd, const Command &cmd);
 
     void tryRegisterClient(int clientFd);
     
@@ -87,7 +88,7 @@ private:
 
 
     void broadcastToChannel(Channel &channel, const std::string &message, Client *sender);
-    
+
     void removeClientFromChannels(int clientFd);
     void cleanup();
 
