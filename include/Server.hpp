@@ -89,6 +89,8 @@ private:
 
     void broadcastToChannel(Channel &channel, const std::string &message, Client *sender);
 
+    void ensureChannelHasOperator(Channel &channel, const std::string &channelName);
+
     void removeClientFromChannels(int clientFd);
     void cleanup();
 

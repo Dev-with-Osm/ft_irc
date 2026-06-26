@@ -746,7 +746,10 @@ void Server::removeClientFromChannels(int clientFd)
             _channels.erase(toErase);
         }
         else
+        {
+            ensureChannelHasOperator(it->second, it->first);
             ++it;
+        }
     }
 }
 
@@ -845,6 +848,8 @@ void Server::handlePart(int clientFd, const Command &cmd)
 
     if (channel.isEmpty())
         _channels.erase(channelName);
+    else
+        ensureChannelHasOperator(channel, channelName);
 }
 
 void Server::handleKick(int clientFd, const Command &cmd)
@@ -948,6 +953,8 @@ void Server::handleKick(int clientFd, const Command &cmd)
     
     if (channel.isEmpty())
         _channels.erase(channelName);
+    else
+        ensureChannelHasOperator(channel, channelName);
 }
 
 void Server::handleInvite(int clientFd, const Command &cmd)
@@ -1337,4 +1344,32 @@ void Server::handleMode(int clientFd, const Command &cmd)
         std::string modeMessage = ":" + replyNick + " MODE " + channelName + " " + appliedModes + appliedParams + "\r\n";
         broadcastToChannel(channel, modeMessage, NULL);
     }
+}
+
+void Server::ensureChannelHasOperator(Channel &channel, const std::string &channelName)
+{
+    if (channel.isEmpty())
+        return;
+
+    if (channel.hasOperators())
+        return;
+
+    const std::map<int, Client *> &clients = channel.getClients();
+
+    if (clients.empty())
+        return;
+
+    Client *newOperator = clients.begin()->second;
+
+    if (newOperator == NULL)
+        return;
+
+    channel.addOperator(newOperator);
+
+    std::string modeMessage = ":server MODE " + channelName
+                            + " +o "
+                            + newOperator->getNickname()
+                            + "\r\n";
+
+    broadcastToChannel(channel, modeMessage, NULL);
 }

@@ -31,6 +31,7 @@ class Channel
         void addOperator(Client *client);
         void removeOperator(int clientFd);
         bool isOperator(int clientFd) const;
+        bool hasOperators() const;
 
         const std::string &getTopic() const;
         void setTopic(const std::string &topic);

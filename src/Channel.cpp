@@ -119,3 +119,8 @@ bool Channel::isInvited(int clientFd) const
 {
     return _invitedClients.find(clientFd) != _invitedClients.end();
 }
+
+bool Channel::hasOperators() const
+{
+    return !_operators.empty();
+}
