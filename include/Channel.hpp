@@ -16,6 +16,8 @@ class Channel
         std::string _topic;
         bool _inviteOnly;
         bool _topicRestricted;
+        bool _hasKey;
+        std::string _key;
 
     public:
         Channel();
@@ -45,6 +47,11 @@ class Channel
         void addInvitedClient(Client *client);
         void removeInvitedClient(int clientFd);
         bool isInvited(int clientFd) const;
+
+        bool hasKey() const;
+        const std::string &getKey() const;
+        void setKey(const std::string &key);
+        void removeKey();
 
         bool isEmpty() const;
 

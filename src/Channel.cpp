@@ -5,14 +5,18 @@
 Channel::Channel()
     : _name(""),
       _inviteOnly(false),
-      _topicRestricted(false)
+      _topicRestricted(false),
+      _hasKey(false),
+      _key("")
 {
 }
 
 Channel::Channel(const std::string &name)
     : _name(name),
       _inviteOnly(false),
-      _topicRestricted(false)
+      _topicRestricted(false),
+      _hasKey(false),
+      _key("")
 {
 }
 
@@ -123,4 +127,26 @@ bool Channel::isInvited(int clientFd) const
 bool Channel::hasOperators() const
 {
     return !_operators.empty();
+}
+
+bool Channel::hasKey() const
+{
+    return _hasKey;
+}
+
+const std::string &Channel::getKey() const
+{
+    return _key;
+}
+
+void Channel::setKey(const std::string &key)
+{
+    _hasKey = true;
+    _key = key;
+}
+
+void Channel::removeKey()
+{
+    _hasKey = false;
+    _key.clear();
 }

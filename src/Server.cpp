@@ -719,6 +719,18 @@ void Server::handleJoin(int clientFd, const Command &cmd)
         return;
     }
 
+    if (channel.hasKey())
+    {
+        if (cmd.params.size() < 2 || cmd.params[1] != channel.getKey())
+        {
+            sendServerReply(clientFd,
+                            "475",
+                            replyNick + " " + channelName,
+                            "Cannot join channel (+k)");
+            return;
+        }
+    }
+
     channel.addClient(client);
 
     if (channelDoesNotExist)
@@ -1328,6 +1340,59 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 }
                 appliedModes += "o";
                 appliedParams += " " + targetNick;
+            }
+        }
+        else if (mode == 'k')
+        {
+            if (currentSign == '+')
+            {
+                if (paramIndex >= cmd.params.size())
+                {
+                    sendServerReply(clientFd,
+                                    "461",
+                                    replyNick + " MODE",
+                                    "Not enough parameters");
+                    continue;
+                }
+
+                std::string key = cmd.params[paramIndex];
+                paramIndex++;
+
+                if (key.empty())
+                {
+                    sendServerReply(clientFd,
+                                    "461",
+                                    replyNick + " MODE",
+                                    "Not enough parameters");
+                    continue;
+                }
+
+                if (!channel.hasKey() || channel.getKey() != key)
+                {
+                    channel.setKey(key);
+
+                    if (lastOutputSign != '+')
+                    {
+                        appliedModes += "+";
+                        lastOutputSign = '+';
+                    }
+                    appliedModes += "k";
+                    appliedParams += " " + key;
+                }
+            }
+            else if (currentSign == '-')
+            {
+                if (channel.hasKey())
+                {
+                    channel.removeKey();
+
+                    if (lastOutputSign != '-')
+                    {
+                        appliedModes += "-";
+                        lastOutputSign = '-';
+                    }
+                    appliedModes += "k";
+                }
             }
         }
         else
