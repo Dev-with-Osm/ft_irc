@@ -180,8 +180,8 @@ void Server::receiveFromClient(size_t &i)
 
     client->getBuffer() += received;
 
-    std::cout << "Received chunk from fd "
-              << clientFd << ": [" << received << "]" << std::endl;
+    // std::cout << "Received chunk from fd "
+    //           << clientFd << ": [" << received << "]" << std::endl;
 
     extractCompleteLines(clientFd, client->getBuffer());
 }
@@ -199,8 +199,8 @@ void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
         if (!line.empty() && line[line.length() - 1] == '\r')
             line.erase(line.length() - 1);
 
-        std::cout << "Complete line from fd "
-                  << clientFd << ": [" << line << "]" << std::endl;
+        // std::cout << "Complete line from fd "
+        //           << clientFd << ": [" << line << "]" << std::endl;
 
         Command cmd = parseCommand(line);
 
@@ -1193,6 +1193,8 @@ void Server::handleMode(int clientFd, const Command &cmd)
     char currentSign = '\0';
     char lastOutputSign = '\0';
     std::string appliedModes;
+    std::string appliedParams;
+    size_t paramIndex = 2;
     
     for (size_t i = 0; i < modeString.length(); i++)
     {
@@ -1263,6 +1265,64 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 appliedModes += "t";
             }
         }
+        else if (mode == 'o')
+        {
+            if (paramIndex >= cmd.params.size())
+            {
+                    sendServerReply(clientFd,
+                                    "461",
+                                    replyNick + " MODE",
+                                    "Not enough parameters");
+                    continue;
+            }
+            std::string targetNick = cmd.params[paramIndex];
+            paramIndex++;
+
+            Client *targetClient = findClientByNickname(targetNick);
+
+            if (targetClient == NULL || !targetClient->isRegistered())
+            {
+                sendServerReply(clientFd,
+                        "401",
+                        replyNick + " " + targetNick,
+                        "No such nick/channel");
+                continue;
+            }
+
+            if (!channel.hasClient(targetClient->getFd()))
+            {
+                sendServerReply(clientFd,
+                                "441",
+                                replyNick + " " + targetNick + " " + channelName,
+                                "They aren't on that channel");
+                continue;
+            }
+
+            if (currentSign == '+' && !channel.isOperator(targetClient->getFd()))
+            {
+                channel.addOperator(targetClient);
+
+                if (lastOutputSign != '+')
+                {
+                    appliedModes += "+";
+                    lastOutputSign = '+';
+                }
+                appliedModes += "o";
+                appliedParams += " " + targetNick;
+            }
+            else if (currentSign == '-' && channel.isOperator(targetClient->getFd()))
+            {
+                channel.removeOperator(targetClient->getFd());
+
+                if (lastOutputSign != '-')
+                {
+                    appliedModes += "-";
+                    lastOutputSign = '-';
+                }
+                appliedModes += "o";
+                appliedParams += " " + targetNick;
+            }
+        }
         else
         {
             sendServerReply(clientFd,
@@ -1274,7 +1334,7 @@ void Server::handleMode(int clientFd, const Command &cmd)
 
     if (!appliedModes.empty())
     {
-        std::string modeMessage = ":" + replyNick + " MODE " + channelName + " " + appliedModes + "\r\n";
+        std::string modeMessage = ":" + replyNick + " MODE " + channelName + " " + appliedModes + appliedParams + "\r\n";
         broadcastToChannel(channel, modeMessage, NULL);
     }
 }
