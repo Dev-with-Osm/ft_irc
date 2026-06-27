@@ -731,6 +731,15 @@ void Server::handleJoin(int clientFd, const Command &cmd)
         }
     }
 
+    if (channel.hasUserLimit() && channel.getClients().size() >= channel.getUserLimit())
+    {
+        sendServerReply(clientFd,
+                    "471",
+                    replyNick + " " + channelName,
+                    "Cannot join channel (+l)");
+        return;
+    }
+
     channel.addClient(client);
 
     if (channelDoesNotExist)
@@ -1395,6 +1404,63 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 }
             }
         }
+        else if (mode == 'l')
+        {
+            if (currentSign == '+')
+            {
+                if (paramIndex >= cmd.params.size())
+                {
+                    sendServerReply(clientFd,
+                                    "461",
+                                    replyNick + " MODE",
+                                    "Not enough parameters");
+                    continue;
+                }
+
+                std::string limitValue = cmd.params[paramIndex];
+                paramIndex++;
+
+                size_t limit = 0;
+
+                if (!parseUserLimit(limitValue, limit))
+                {
+                    sendServerReply(clientFd,
+                            "461",
+                            replyNick + " MODE",
+                            "Invalid limit");
+                    continue;
+                }
+
+                if (!channel.hasUserLimit() || channel.getUserLimit() != limit)
+                {
+                    channel.setUserLimit(limit);
+
+                    if (lastOutputSign != '+')
+                    {
+                        appliedModes += "+";
+                        lastOutputSign = '+';
+                    }
+
+                    appliedModes += "l";
+                    appliedParams += " " + limitValue;
+                }
+            }
+            else if (currentSign == '-')
+            {
+                if (channel.hasUserLimit())
+                {
+                    channel.removeUserLimit();
+
+                    if (lastOutputSign != '-')
+                    {
+                        appliedModes += "-";
+                        lastOutputSign = '-';
+                    }
+
+                    appliedModes += "l";
+                }
+            }
+        }
         else
         {
             sendServerReply(clientFd,
@@ -1437,4 +1503,29 @@ void Server::ensureChannelHasOperator(Channel &channel, const std::string &chann
                             + "\r\n";
 
     broadcastToChannel(channel, modeMessage, NULL);
+}
+
+bool Server::parseUserLimit(const std::string &value, size_t &limit) const
+{
+    if (value.empty())
+        return false;
+
+    for (size_t i = 0; i < value.length(); i++)
+    {
+        if (value[i] < '0' || value[i] > '9')
+            return false;
+    }
+
+    errno = 0;
+    char *end = NULL;
+    long parsed = std::strtol(value.c_str(), &end, 10);
+
+    if (errno == ERANGE || end == value.c_str() || *end != '\0')
+        return false;
+
+    if (parsed <= 0)
+        return false;
+
+    limit = static_cast<size_t>(parsed);
+    return true;
 }

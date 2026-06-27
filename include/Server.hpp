@@ -91,6 +91,8 @@ private:
 
     void ensureChannelHasOperator(Channel &channel, const std::string &channelName);
 
+    bool parseUserLimit(const std::string &value, size_t &limit) const;
+
     void removeClientFromChannels(int clientFd);
     void cleanup();
 

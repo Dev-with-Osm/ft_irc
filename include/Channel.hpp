@@ -18,6 +18,8 @@ class Channel
         bool _topicRestricted;
         bool _hasKey;
         std::string _key;
+        bool _hasUserLimit;
+        size_t _userLimit;
 
     public:
         Channel();
@@ -52,6 +54,11 @@ class Channel
         const std::string &getKey() const;
         void setKey(const std::string &key);
         void removeKey();
+
+        bool hasUserLimit() const;
+        size_t getUserLimit() const;
+        void setUserLimit(size_t limit);
+        void removeUserLimit();
 
         bool isEmpty() const;
 
