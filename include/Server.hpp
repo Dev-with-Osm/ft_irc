@@ -93,6 +93,11 @@ private:
 
     bool parseUserLimit(const std::string &value, size_t &limit) const;
 
+    void appendAppliedMode(std::string &appliedModes,
+                       char &lastOutputSign,
+                       char sign,
+                       char mode) const;
+
     void removeClientFromChannels(int clientFd);
     void cleanup();
 

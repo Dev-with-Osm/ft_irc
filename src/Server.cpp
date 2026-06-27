@@ -1248,24 +1248,12 @@ void Server::handleMode(int clientFd, const Command &cmd)
             if (currentSign == '+' && !channel.isInviteOnly())
             {
                 channel.setInviteOnly(true);
-
-                if (lastOutputSign != '+')
-                {
-                    appliedModes += "+";
-                    lastOutputSign = '+';
-                }
-                appliedModes += "i";
+                appendAppliedMode(appliedModes, lastOutputSign, '+', 'i');
             }
             else if (currentSign == '-' && channel.isInviteOnly())
             {
                 channel.setInviteOnly(false);
-
-                if (lastOutputSign != '-')
-                {
-                    appliedModes += "-";
-                    lastOutputSign = '-';
-                }
-                appliedModes += "i";
+                appendAppliedMode(appliedModes, lastOutputSign, '-', 'i');
             }
         }
         else if (mode == 't')
@@ -1273,35 +1261,23 @@ void Server::handleMode(int clientFd, const Command &cmd)
             if (currentSign == '+' && !channel.isTopicRestricted())
             {
                 channel.setTopicRestricted(true);
-
-                if (lastOutputSign != '+')
-                {
-                    appliedModes += "+";
-                    lastOutputSign = '+';
-                }
-                appliedModes += "t";
+                appendAppliedMode(appliedModes, lastOutputSign, '+', 't');
             }
             else if (currentSign == '-' && channel.isTopicRestricted())
             {
                 channel.setTopicRestricted(false);
-
-                if (lastOutputSign != '-')
-                {
-                    appliedModes += "-";
-                    lastOutputSign = '-';
-                }
-                appliedModes += "t";
+                appendAppliedMode(appliedModes, lastOutputSign, '-', 't');
             }
         }
         else if (mode == 'o')
         {
             if (paramIndex >= cmd.params.size())
             {
-                    sendServerReply(clientFd,
-                                    "461",
-                                    replyNick + " MODE",
-                                    "Not enough parameters");
-                    continue;
+                sendServerReply(clientFd,
+                                "461",
+                                replyNick + " MODE",
+                                "Not enough parameters");
+                continue;
             }
             std::string targetNick = cmd.params[paramIndex];
             paramIndex++;
@@ -1329,25 +1305,13 @@ void Server::handleMode(int clientFd, const Command &cmd)
             if (currentSign == '+' && !channel.isOperator(targetClient->getFd()))
             {
                 channel.addOperator(targetClient);
-
-                if (lastOutputSign != '+')
-                {
-                    appliedModes += "+";
-                    lastOutputSign = '+';
-                }
-                appliedModes += "o";
+                appendAppliedMode(appliedModes, lastOutputSign, '+', 'o');
                 appliedParams += " " + targetNick;
             }
             else if (currentSign == '-' && channel.isOperator(targetClient->getFd()))
             {
                 channel.removeOperator(targetClient->getFd());
-
-                if (lastOutputSign != '-')
-                {
-                    appliedModes += "-";
-                    lastOutputSign = '-';
-                }
-                appliedModes += "o";
+                appendAppliedMode(appliedModes, lastOutputSign, '-', 'o');
                 appliedParams += " " + targetNick;
             }
         }
@@ -1379,13 +1343,7 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 if (!channel.hasKey() || channel.getKey() != key)
                 {
                     channel.setKey(key);
-
-                    if (lastOutputSign != '+')
-                    {
-                        appliedModes += "+";
-                        lastOutputSign = '+';
-                    }
-                    appliedModes += "k";
+                    appendAppliedMode(appliedModes, lastOutputSign, '+', 'k');
                     appliedParams += " " + key;
                 }
             }
@@ -1394,13 +1352,7 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 if (channel.hasKey())
                 {
                     channel.removeKey();
-
-                    if (lastOutputSign != '-')
-                    {
-                        appliedModes += "-";
-                        lastOutputSign = '-';
-                    }
-                    appliedModes += "k";
+                    appendAppliedMode(appliedModes, lastOutputSign, '-', 'k');
                 }
             }
         }
@@ -1434,14 +1386,7 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 if (!channel.hasUserLimit() || channel.getUserLimit() != limit)
                 {
                     channel.setUserLimit(limit);
-
-                    if (lastOutputSign != '+')
-                    {
-                        appliedModes += "+";
-                        lastOutputSign = '+';
-                    }
-
-                    appliedModes += "l";
+                    appendAppliedMode(appliedModes, lastOutputSign, '+', 'l');
                     appliedParams += " " + limitValue;
                 }
             }
@@ -1450,14 +1395,7 @@ void Server::handleMode(int clientFd, const Command &cmd)
                 if (channel.hasUserLimit())
                 {
                     channel.removeUserLimit();
-
-                    if (lastOutputSign != '-')
-                    {
-                        appliedModes += "-";
-                        lastOutputSign = '-';
-                    }
-
-                    appliedModes += "l";
+                    appendAppliedMode(appliedModes, lastOutputSign, '-', 'l');
                 }
             }
         }
@@ -1528,4 +1466,18 @@ bool Server::parseUserLimit(const std::string &value, size_t &limit) const
 
     limit = static_cast<size_t>(parsed);
     return true;
+}
+
+void Server::appendAppliedMode(std::string &appliedModes,
+                               char &lastOutputSign,
+                               char sign,
+                               char mode) const
+{
+    if (lastOutputSign != sign)
+    {
+        appliedModes += sign;
+        lastOutputSign = sign;
+    }
+
+    appliedModes += mode;
 }
