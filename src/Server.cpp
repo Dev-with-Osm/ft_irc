@@ -1244,31 +1244,9 @@ void Server::handleMode(int clientFd, const Command &cmd)
         }
         
         if (mode == 'i')
-        {
-            if (currentSign == '+' && !channel.isInviteOnly())
-            {
-                channel.setInviteOnly(true);
-                appendAppliedMode(appliedModes, lastOutputSign, '+', 'i');
-            }
-            else if (currentSign == '-' && channel.isInviteOnly())
-            {
-                channel.setInviteOnly(false);
-                appendAppliedMode(appliedModes, lastOutputSign, '-', 'i');
-            }
-        }
+            applyInviteOnlyMode(channel, currentSign, appliedModes, lastOutputSign);
         else if (mode == 't')
-        {
-            if (currentSign == '+' && !channel.isTopicRestricted())
-            {
-                channel.setTopicRestricted(true);
-                appendAppliedMode(appliedModes, lastOutputSign, '+', 't');
-            }
-            else if (currentSign == '-' && channel.isTopicRestricted())
-            {
-                channel.setTopicRestricted(false);
-                appendAppliedMode(appliedModes, lastOutputSign, '-', 't');
-            }
-        }
+            applyTopicRestrictedMode(channel, currentSign, appliedModes, lastOutputSign);
         else if (mode == 'o')
         {
             if (paramIndex >= cmd.params.size())
@@ -1480,4 +1458,38 @@ void Server::appendAppliedMode(std::string &appliedModes,
     }
 
     appliedModes += mode;
+}
+
+void Server::applyInviteOnlyMode(Channel &channel,
+                                 char currentSign,
+                                 std::string &appliedModes,
+                                 char &lastOutputSign) const
+{
+    if (currentSign == '+' && !channel.isInviteOnly())
+    {
+        channel.setInviteOnly(true);
+        appendAppliedMode(appliedModes, lastOutputSign, '+', 'i');
+    }
+    else if (currentSign == '-' && channel.isInviteOnly())
+    {
+        channel.setInviteOnly(false);
+        appendAppliedMode(appliedModes, lastOutputSign, '-', 'i');
+    }
+}
+
+void Server::applyTopicRestrictedMode(Channel &channel,
+                                      char currentSign,
+                                      std::string &appliedModes,
+                                      char &lastOutputSign) const
+{
+    if (currentSign == '+' && !channel.isTopicRestricted())
+    {
+        channel.setTopicRestricted(true);
+        appendAppliedMode(appliedModes, lastOutputSign, '+', 't');
+    }
+    else if (currentSign == '-' && channel.isTopicRestricted())
+    {
+        channel.setTopicRestricted(false);
+        appendAppliedMode(appliedModes, lastOutputSign, '-', 't');
+    }
 }

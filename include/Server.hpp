@@ -97,6 +97,16 @@ private:
                        char &lastOutputSign,
                        char sign,
                        char mode) const;
+    
+    void applyInviteOnlyMode(Channel &channel,
+                            char currentSign,
+                            std::string &appliedModes,
+                            char &lastOutputSign) const;
+
+    void applyTopicRestrictedMode(Channel &channel,
+                                char currentSign,
+                                std::string &appliedModes,
+                                char &lastOutputSign) const;
 
     void removeClientFromChannels(int clientFd);
     void cleanup();
