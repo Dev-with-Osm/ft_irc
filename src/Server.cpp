@@ -19,6 +19,8 @@ Server::Server(const char *portArg, const char *password)
 
         _serverFd = createServerSocket();
 
+        setNonBlocking(_serverFd);
+
         enableReuseAddress();
 
         sockaddr_in addr = createServerAddress();
@@ -129,6 +131,8 @@ void Server::acceptNewClient()
 
     if (clientFd < 0)
         throw std::runtime_error("accept failed");
+        
+    setNonBlocking(clientFd);
 
     addFdToPoll(clientFd);
     _clients[clientFd] = Client(clientFd);
@@ -180,9 +184,6 @@ void Server::receiveFromClient(size_t &i)
 
     client->getBuffer() += received;
 
-    // std::cout << "Received chunk from fd "
-    //           << clientFd << ": [" << received << "]" << std::endl;
-
     extractCompleteLines(clientFd, client->getBuffer());
 }
 
@@ -198,9 +199,6 @@ void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
 
         if (!line.empty() && line[line.length() - 1] == '\r')
             line.erase(line.length() - 1);
-
-        // std::cout << "Complete line from fd "
-        //           << clientFd << ": [" << line << "]" << std::endl;
 
         Command cmd = parseCommand(line);
 
@@ -242,7 +240,18 @@ void Server::handleCommand(int clientFd, const Command &cmd)
     else if (cmd.cmd == "MODE")
         handleMode(clientFd, cmd);
     else
-        std::cout << "Unknown command: [" << cmd.cmd << "]" << std::endl;
+    {
+        Client *client = findClientByFd(clientFd);
+        std::string replyNick = "*";
+
+        if (client != NULL)
+            replyNick = getReplyNickname(*client);
+
+        sendServerReply(clientFd,
+                        "421",
+                        replyNick + " " + cmd.cmd,
+                        "Unknown command");
+    }
 }
 
 void Server::handlePing(int clientFd, const Command &cmd)
@@ -578,14 +587,25 @@ void Server::tryRegisterClient(int clientFd)
 
     client->setRegistered(true);
 
+    std::string nick = client->getNickname();
+
     sendServerReply(clientFd,
                     "001",
-                    client->getNickname(),
-                    "Welcome to ft_irc, " + client->getNickname());
+                    nick,
+                    "Welcome to ft_irc, " + nick);
 
-    std::cout << "Client registered: fd "
-              << clientFd << " nick=" << client->getNickname()
-              << " user=" << client->getUsername() << std::endl;
+    sendServerReply(clientFd,
+                    "002",
+                    nick,
+                    "Your host is ft_irc, running version 1.0");
+
+    sendServerReply(clientFd,
+                    "003",
+                    nick,
+                    "This server was created today");
+
+    sendToClient(clientFd,
+                ":server 004 " + nick + " ft_irc 1.0 - itkol\r\n");
 }
 
 Client *Server::findClientByNickname(const std::string &nickname)
@@ -750,6 +770,53 @@ void Server::handleJoin(int clientFd, const Command &cmd)
     channel.removeInvitedClient(clientFd);
 
     broadcastToChannel(channel, joinMessage, NULL);
+    if (channel.getTopic().empty())
+    {
+        sendToClient(clientFd,
+                    ":server 331 " + client->getNickname()
+                    + " " + channelName
+                    + " :No topic is set\r\n");
+    }
+    else
+    {
+        sendToClient(clientFd,
+                    ":server 332 " + client->getNickname()
+                    + " " + channelName
+                    + " :" + channel.getTopic() + "\r\n");
+    }
+    sendNamesList(clientFd, *client, channel);
+}
+
+void Server::sendNamesList(int clientFd, const Client &client, Channel &channel)
+{
+    std::string namesList;
+    const std::map<int, Client *> &channelClients = channel.getClients();
+
+    std::map<int, Client *>::const_iterator it;
+
+    for (it = channelClients.begin(); it != channelClients.end(); ++it)
+    {
+        Client *channelClient = it->second;
+
+        if (channelClient == NULL)
+            continue;
+
+        if (channel.isOperator(channelClient->getFd()))
+            namesList += "@";
+
+        namesList += channelClient->getNickname();
+        namesList += " ";
+    }
+
+    sendToClient(clientFd,
+                 ":server 353 " + client.getNickname()
+                 + " = " + channel.getName()
+                 + " :" + namesList + "\r\n");
+
+    sendToClient(clientFd,
+                 ":server 366 " + client.getNickname()
+                 + " " + channel.getName()
+                 + " :End of /NAMES list\r\n");
 }
 
 void Server::removeClientFromChannels(int clientFd)
@@ -1558,4 +1625,10 @@ void Server::applyLimitMode(int clientFd,
             appendAppliedMode(appliedModes, lastOutputSign, '-', 'l');
         }
     }
+}
+
+void Server::setNonBlocking(int fd)
+{
+    if (fcntl(fd, F_SETFL, O_NONBLOCK) < 0)
+        throw std::runtime_error("fcntl failed");
 }

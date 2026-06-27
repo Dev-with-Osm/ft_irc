@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <poll.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 
 #include "Command.hpp"
@@ -42,6 +43,7 @@ private:
 
     void addFdToPoll(int fd);
     void acceptNewClient();
+    void setNonBlocking(int fd);
     void removeClient(size_t &i);
     void receiveFromClient(size_t &i);
     void extractCompleteLines(int clientFd, std::string &clientBuffer);
@@ -138,6 +140,8 @@ private:
                         std::string &appliedModes,
                         char &lastOutputSign,
                         std::string &appliedParams);
+
+    void sendNamesList(int clientFd, const Client &client, Channel &channel);
 
     void removeClientFromChannels(int clientFd);
     void cleanup();
