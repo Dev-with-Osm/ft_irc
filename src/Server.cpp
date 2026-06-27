@@ -1262,44 +1262,15 @@ void Server::handleMode(int clientFd, const Command &cmd)
         }
         else if (mode == 'k')
         {
-            if (currentSign == '+')
-            {
-                if (paramIndex >= cmd.params.size())
-                {
-                    sendServerReply(clientFd,
-                                    "461",
-                                    replyNick + " MODE",
-                                    "Not enough parameters");
-                    continue;
-                }
-
-                std::string key = cmd.params[paramIndex];
-                paramIndex++;
-
-                if (key.empty())
-                {
-                    sendServerReply(clientFd,
-                                    "461",
-                                    replyNick + " MODE",
-                                    "Not enough parameters");
-                    continue;
-                }
-
-                if (!channel.hasKey() || channel.getKey() != key)
-                {
-                    channel.setKey(key);
-                    appendAppliedMode(appliedModes, lastOutputSign, '+', 'k');
-                    appliedParams += " " + key;
-                }
-            }
-            else if (currentSign == '-')
-            {
-                if (channel.hasKey())
-                {
-                    channel.removeKey();
-                    appendAppliedMode(appliedModes, lastOutputSign, '-', 'k');
-                }
-            }
+            applyKeyMode(clientFd,
+                        cmd,
+                        channel,
+                        replyNick,
+                        currentSign,
+                        paramIndex,
+                        appliedModes,
+                        lastOutputSign,
+                        appliedParams);
         }
         else if (mode == 'l')
         {
@@ -1515,5 +1486,55 @@ void Server::applyOperatorMode(int clientFd,
         channel.removeOperator(targetClient->getFd());
         appendAppliedMode(appliedModes, lastOutputSign, '-', 'o');
         appliedParams += " " + targetNick;
+    }
+}
+
+void Server::applyKeyMode(int clientFd,
+                          const Command &cmd,
+                          Channel &channel,
+                          const std::string &replyNick,
+                          char currentSign,
+                          size_t &paramIndex,
+                          std::string &appliedModes,
+                          char &lastOutputSign,
+                          std::string &appliedParams)
+{
+    if (currentSign == '+')
+    {
+        if (paramIndex >= cmd.params.size())
+        {
+            sendServerReply(clientFd,
+                            "461",
+                            replyNick + " MODE",
+                            "Not enough parameters");
+            return;
+        }
+
+        std::string key = cmd.params[paramIndex];
+        paramIndex++;
+
+        if (key.empty())
+        {
+            sendServerReply(clientFd,
+                            "461",
+                            replyNick + " MODE",
+                            "Not enough parameters");
+            return;
+        }
+
+        if (!channel.hasKey() || channel.getKey() != key)
+        {
+            channel.setKey(key);
+            appendAppliedMode(appliedModes, lastOutputSign, '+', 'k');
+            appliedParams += " " + key;
+        }
+    }
+    else if (currentSign == '-')
+    {
+        if (channel.hasKey())
+        {
+            channel.removeKey();
+            appendAppliedMode(appliedModes, lastOutputSign, '-', 'k');
+        }
     }
 }
