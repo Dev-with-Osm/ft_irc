@@ -1274,46 +1274,15 @@ void Server::handleMode(int clientFd, const Command &cmd)
         }
         else if (mode == 'l')
         {
-            if (currentSign == '+')
-            {
-                if (paramIndex >= cmd.params.size())
-                {
-                    sendServerReply(clientFd,
-                                    "461",
-                                    replyNick + " MODE",
-                                    "Not enough parameters");
-                    continue;
-                }
-
-                std::string limitValue = cmd.params[paramIndex];
-                paramIndex++;
-
-                size_t limit = 0;
-
-                if (!parseUserLimit(limitValue, limit))
-                {
-                    sendServerReply(clientFd,
-                            "461",
-                            replyNick + " MODE",
-                            "Invalid limit");
-                    continue;
-                }
-
-                if (!channel.hasUserLimit() || channel.getUserLimit() != limit)
-                {
-                    channel.setUserLimit(limit);
-                    appendAppliedMode(appliedModes, lastOutputSign, '+', 'l');
-                    appliedParams += " " + limitValue;
-                }
-            }
-            else if (currentSign == '-')
-            {
-                if (channel.hasUserLimit())
-                {
-                    channel.removeUserLimit();
-                    appendAppliedMode(appliedModes, lastOutputSign, '-', 'l');
-                }
-            }
+            applyLimitMode(clientFd,
+                        cmd,
+                        channel,
+                        replyNick,
+                        currentSign,
+                        paramIndex,
+                        appliedModes,
+                        lastOutputSign,
+                        appliedParams);
         }
         else
         {
@@ -1535,6 +1504,58 @@ void Server::applyKeyMode(int clientFd,
         {
             channel.removeKey();
             appendAppliedMode(appliedModes, lastOutputSign, '-', 'k');
+        }
+    }
+}
+
+void Server::applyLimitMode(int clientFd,
+                            const Command &cmd,
+                            Channel &channel,
+                            const std::string &replyNick,
+                            char currentSign,
+                            size_t &paramIndex,
+                            std::string &appliedModes,
+                            char &lastOutputSign,
+                            std::string &appliedParams)
+{
+    if (currentSign == '+')
+    {
+        if (paramIndex >= cmd.params.size())
+        {
+            sendServerReply(clientFd,
+                            "461",
+                            replyNick + " MODE",
+                            "Not enough parameters");
+            return;
+        }
+
+        std::string limitValue = cmd.params[paramIndex];
+        paramIndex++;
+
+        size_t limit = 0;
+
+        if (!parseUserLimit(limitValue, limit))
+        {
+            sendServerReply(clientFd,
+                            "461",
+                            replyNick + " MODE",
+                            "Invalid limit");
+            return;
+        }
+
+        if (!channel.hasUserLimit() || channel.getUserLimit() != limit)
+        {
+            channel.setUserLimit(limit);
+            appendAppliedMode(appliedModes, lastOutputSign, '+', 'l');
+            appliedParams += " " + limitValue;
+        }
+    }
+    else if (currentSign == '-')
+    {
+        if (channel.hasUserLimit())
+        {
+            channel.removeUserLimit();
+            appendAppliedMode(appliedModes, lastOutputSign, '-', 'l');
         }
     }
 }
