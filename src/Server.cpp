@@ -1249,49 +1249,16 @@ void Server::handleMode(int clientFd, const Command &cmd)
             applyTopicRestrictedMode(channel, currentSign, appliedModes, lastOutputSign);
         else if (mode == 'o')
         {
-            if (paramIndex >= cmd.params.size())
-            {
-                sendServerReply(clientFd,
-                                "461",
-                                replyNick + " MODE",
-                                "Not enough parameters");
-                continue;
-            }
-            std::string targetNick = cmd.params[paramIndex];
-            paramIndex++;
-
-            Client *targetClient = findClientByNickname(targetNick);
-
-            if (targetClient == NULL || !targetClient->isRegistered())
-            {
-                sendServerReply(clientFd,
-                        "401",
-                        replyNick + " " + targetNick,
-                        "No such nick/channel");
-                continue;
-            }
-
-            if (!channel.hasClient(targetClient->getFd()))
-            {
-                sendServerReply(clientFd,
-                                "441",
-                                replyNick + " " + targetNick + " " + channelName,
-                                "They aren't on that channel");
-                continue;
-            }
-
-            if (currentSign == '+' && !channel.isOperator(targetClient->getFd()))
-            {
-                channel.addOperator(targetClient);
-                appendAppliedMode(appliedModes, lastOutputSign, '+', 'o');
-                appliedParams += " " + targetNick;
-            }
-            else if (currentSign == '-' && channel.isOperator(targetClient->getFd()))
-            {
-                channel.removeOperator(targetClient->getFd());
-                appendAppliedMode(appliedModes, lastOutputSign, '-', 'o');
-                appliedParams += " " + targetNick;
-            }
+            applyOperatorMode(clientFd,
+                            cmd,
+                            channel,
+                            channelName,
+                            replyNick,
+                            currentSign,
+                            paramIndex,
+                            appliedModes,
+                            lastOutputSign,
+                            appliedParams);
         }
         else if (mode == 'k')
         {
@@ -1491,5 +1458,62 @@ void Server::applyTopicRestrictedMode(Channel &channel,
     {
         channel.setTopicRestricted(false);
         appendAppliedMode(appliedModes, lastOutputSign, '-', 't');
+    }
+}
+
+void Server::applyOperatorMode(int clientFd,
+                               const Command &cmd,
+                               Channel &channel,
+                               const std::string &channelName,
+                               const std::string &replyNick,
+                               char currentSign,
+                               size_t &paramIndex,
+                               std::string &appliedModes,
+                               char &lastOutputSign,
+                               std::string &appliedParams)
+{
+    if (paramIndex >= cmd.params.size())
+    {
+        sendServerReply(clientFd,
+                        "461",
+                        replyNick + " MODE",
+                        "Not enough parameters");
+        return;
+    }
+
+    std::string targetNick = cmd.params[paramIndex];
+    paramIndex++;
+
+    Client *targetClient = findClientByNickname(targetNick);
+
+    if (targetClient == NULL || !targetClient->isRegistered())
+    {
+        sendServerReply(clientFd,
+                        "401",
+                        replyNick + " " + targetNick,
+                        "No such nick/channel");
+        return;
+    }
+
+    if (!channel.hasClient(targetClient->getFd()))
+    {
+        sendServerReply(clientFd,
+                        "441",
+                        replyNick + " " + targetNick + " " + channelName,
+                        "They aren't on that channel");
+        return;
+    }
+
+    if (currentSign == '+' && !channel.isOperator(targetClient->getFd()))
+    {
+        channel.addOperator(targetClient);
+        appendAppliedMode(appliedModes, lastOutputSign, '+', 'o');
+        appliedParams += " " + targetNick;
+    }
+    else if (currentSign == '-' && channel.isOperator(targetClient->getFd()))
+    {
+        channel.removeOperator(targetClient->getFd());
+        appendAppliedMode(appliedModes, lastOutputSign, '-', 'o');
+        appliedParams += " " + targetNick;
     }
 }

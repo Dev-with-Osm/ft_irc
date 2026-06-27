@@ -107,6 +107,16 @@ private:
                                 char currentSign,
                                 std::string &appliedModes,
                                 char &lastOutputSign) const;
+    void applyOperatorMode(int clientFd,
+                            const Command &cmd,
+                            Channel &channel,
+                            const std::string &channelName,
+                            const std::string &replyNick,
+                            char currentSign,
+                            size_t &paramIndex,
+                            std::string &appliedModes,
+                            char &lastOutputSign,
+                            std::string &appliedParams);
 
     void removeClientFromChannels(int clientFd);
     void cleanup();
