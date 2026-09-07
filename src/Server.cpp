@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cerrno>
 #include <cstring>
+#include <sstream>
 
 Server::Server(const char *portArg, const char *password)
     : _port(0),
@@ -964,7 +965,6 @@ void Server::handleKick(int clientFd, const Command &cmd)
     std::string channelName = cmd.params[0];
     std::string targetNick = cmd.params[1];
     std::string reason;
-
     if (cmd.params.size() > 2)
         reason = cmd.params[2];
     
@@ -1233,12 +1233,12 @@ void Server::handleMode(int clientFd, const Command &cmd)
 
     std::string replyNick = getReplyNickname(*client);
 
-    if (cmd.params.size() < 2)
+    if (cmd.params.empty())
     {
         sendServerReply(clientFd,
-                "461",
-                replyNick + " MODE",
-                "Not enough parameters");
+                        "461",
+                        replyNick + " MODE",
+                        "Not enough parameters");
         return;
     }
 
@@ -1266,6 +1266,45 @@ void Server::handleMode(int clientFd, const Command &cmd)
 
     Channel &channel = it->second;
 
+if (cmd.params.size() == 1)
+{
+    std::string modes = "+";
+    std::string modeParams;
+
+    if (channel.isInviteOnly())
+        modes += "i";
+
+    if (channel.isTopicRestricted())
+        modes += "t";
+
+    if (channel.hasKey())
+    {
+        modes += "k";
+        modeParams += " " + channel.getKey();
+    }
+
+    if (channel.hasUserLimit())
+    {
+        modes += "l";
+
+        std::stringstream ss;
+        ss << channel.getUserLimit();
+
+        modeParams += " " + ss.str();
+    }
+
+    sendToClient(clientFd,
+                 ":ft_irc 324 "
+                 + replyNick
+                 + " "
+                 + channelName
+                 + " "
+                 + modes
+                 + modeParams
+                 + "\r\n");
+
+    return;
+}
     if (!channel.hasClient(clientFd))
     {
         sendServerReply(clientFd,
