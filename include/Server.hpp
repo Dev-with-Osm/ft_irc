@@ -142,6 +142,8 @@ private:
                         std::string &appliedParams);
 
     void sendNamesList(int clientFd, const Client &client, Channel &channel);
+    void broadcastNickChange(int clientFd,
+                                 const std::string &message);
 
     void removeClientFromChannels(int clientFd);
     void cleanup();

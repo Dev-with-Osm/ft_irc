@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstring>
 #include <sstream>
+#include <set>
 
 Server::Server(const char *portArg, const char *password)
     : _port(0),
@@ -488,6 +489,40 @@ bool Server::isNicknameInUse(const std::string &nickname, int currentFd) const
     return (false);
 }
 
+void Server::broadcastNickChange(int clientFd,
+                                 const std::string &message)
+{
+    std::set<int> recipients;
+
+    recipients.insert(clientFd);
+
+    for (std::map<std::string, Channel>::iterator it = _channels.begin();
+         it != _channels.end();
+         ++it)
+    {
+        Channel &channel = it->second;
+
+        if (!channel.hasClient(clientFd))
+            continue;
+
+        const std::map<int, Client *> &members = channel.getClients();
+
+        for (std::map<int, Client *>::const_iterator memberIt = members.begin();
+             memberIt != members.end();
+             ++memberIt)
+        {
+            recipients.insert(memberIt->first);
+        }
+    }
+
+    for (std::set<int>::iterator it = recipients.begin();
+         it != recipients.end();
+         ++it)
+    {
+        sendToClient(*it, message);
+    }
+}
+
 void Server::handleNick(int clientFd, const Command &cmd)
 {
     Client *client = findClientByFd(clientFd);
@@ -524,6 +559,17 @@ void Server::handleNick(int clientFd, const Command &cmd)
                         replyNick + " " + nickname,
                         "Nickname is already in use");
         return;
+    }
+
+    std::string oldNickname = client->getNickname();
+    bool wasRegistered = client->isRegistered();
+
+    if (wasRegistered && oldNickname != nickname)
+    {
+        std::string nickMessage =
+            ":" + oldNickname + " NICK :" + nickname + "\r\n";
+
+        broadcastNickChange(clientFd, nickMessage);
     }
 
     client->setNickname(nickname);
@@ -1294,7 +1340,7 @@ if (cmd.params.size() == 1)
     }
 
     sendToClient(clientFd,
-                 ":ft_irc 324 "
+                 ":server 324 "
                  + replyNick
                  + " "
                  + channelName
