@@ -132,7 +132,14 @@ void Server::acceptNewClient()
     int clientFd = accept(_serverFd, NULL, NULL);
 
     if (clientFd < 0)
+    {
+        if (errno == EAGAIN ||
+            errno == EWOULDBLOCK ||
+            errno == EINTR)
+            return;
+        
         throw std::runtime_error("accept failed");
+    }
         
     setNonBlocking(clientFd);
 
@@ -166,6 +173,11 @@ void Server::receiveFromClient(size_t &i)
 
     if (bytes < 0)
     {
+        if (errno == EAGAIN ||
+            errno == EWOULDBLOCK ||
+            errno == EINTR)
+            return;
+        
         std::cerr << "recv failed for fd " << clientFd << std::endl;
         removeClient(i);
         return;
@@ -208,10 +220,86 @@ void Server::extractCompleteLines(int clientFd, std::string &clientBuffer)
     }
 }
 
+void Server::enableWriteEvent(int clientFd)
+{
+    for (size_t i = 0; i < _pfds.size(); i++)
+    {
+        if (_pfds[i].fd == clientFd)
+        {
+            _pfds[i].events |= POLLOUT;
+            return;
+        }
+    }
+}
+
+void Server::disableWriteEvent(int clientFd)
+{
+    for (size_t i = 0; i < _pfds.size(); i++)
+    {
+        if (_pfds[i].fd == clientFd)
+        {
+            _pfds[i].events &= ~POLLOUT;
+            return;
+        }
+    }
+}
+
+void Server::sendPendingData(size_t &i)
+{
+    int clientFd = _pfds[i].fd;
+
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    std::string &sendBuffer = client->getSendBuffer();
+
+    if (sendBuffer.empty())
+    {
+        disableWriteEvent(clientFd);
+        return;
+    }
+
+    ssize_t bytesSent = send(clientFd,
+                             sendBuffer.c_str(),
+                             sendBuffer.length(),
+                             0);
+
+    if (bytesSent > 0)
+    {
+        sendBuffer.erase(0, bytesSent);
+
+        if (sendBuffer.empty())
+            disableWriteEvent(clientFd);
+
+        return;
+    }
+
+    if (bytesSent < 0)
+    {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+            return;
+
+        std::cerr << "send failed for fd "
+                  << clientFd << ": "
+                  << std::strerror(errno)
+                  << std::endl;
+
+        removeClient(i);
+    }
+}
+
 void Server::sendToClient(int clientFd, const std::string &message)
 {
-    if (send(clientFd, message.c_str(), message.length(), 0) < 0)
-        std::cerr << "send failed for fd " << clientFd << std::endl;
+    Client *client = findClientByFd(clientFd);
+
+    if (client == NULL)
+        return;
+
+    client->getSendBuffer() += message;
+
+    enableWriteEvent(clientFd);
 }
 
 void Server::handleCommand(int clientFd, const Command &cmd)
@@ -324,7 +412,9 @@ void Server::handlePrivmsgToChannel(const std::string &target,
                                     int clientFd,
                                     const std::string &senderNick)
 {
-    std::map<std::string, Channel>::iterator it  = _channels.find(target);
+    std::string channelKey = normalizeChannelName(target);
+
+    std::map<std::string, Channel>::iterator it  = _channels.find(channelKey);
     
     if (it == _channels.end())
     {
@@ -419,16 +509,46 @@ void Server::run()
         int ret = poll(&_pfds[0], _pfds.size(), WAIT_FOREVER);
 
         if (ret < 0)
-            throw std::runtime_error("poll failed");
+        {
+            if (errno == EINTR)
+                continue;
 
+            throw std::runtime_error("poll failed");
+        }
         for (size_t i = 0; i < _pfds.size(); i++)
         {
-            if (_pfds[i].revents & POLLIN)
+            short revents = _pfds[i].revents;
+
+            if (revents == 0)
+                continue;
+
+            if (_pfds[i].fd == _serverFd)
             {
-                if (_pfds[i].fd == _serverFd)
+                if (revents & POLLIN)
                     acceptNewClient();
-                else
-                    receiveFromClient(i);
+
+                continue;
+            }
+
+            int clientFd = _pfds[i].fd;
+
+            if (revents & (POLLERR | POLLHUP | POLLNVAL))
+            {
+                removeClient(i);
+                continue;
+            }
+
+            if (revents & POLLIN)
+            {
+                receiveFromClient(i);
+
+                if (findClientByFd(clientFd) == NULL)
+                    continue;
+            }
+
+            if (revents & POLLOUT)
+            {
+                sendPendingData(i);
             }
         }
     }
@@ -735,6 +855,11 @@ bool Server::isValidChannelName(const std::string &channelName) const
     return true;
 }
 
+std::string Server::normalizeChannelName(const std::string &name) const
+{
+    return toUpper(name);
+}
+
 void Server::handleJoin(int clientFd, const Command &cmd)
 {
     Client *client = findClientByFd(clientFd);
@@ -767,12 +892,14 @@ void Server::handleJoin(int clientFd, const Command &cmd)
         return;
     }
 
-    bool channelDoesNotExist = _channels.find(channelName) == _channels.end();
+    std::string channelKey = normalizeChannelName(channelName);
+
+    bool channelDoesNotExist = _channels.find(channelKey) == _channels.end();
 
     if (channelDoesNotExist)
-        _channels[channelName] = Channel(channelName);
+        _channels[channelKey] = Channel(channelName);
 
-    Channel &channel = _channels[channelName];
+    Channel &channel = _channels[channelKey];
 
     if (channel.hasClient(clientFd))
         return;
@@ -812,7 +939,7 @@ void Server::handleJoin(int clientFd, const Command &cmd)
     if (channelDoesNotExist)
         channel.addOperator(client);
 
-    std::string joinMessage = ":" + client->getNickname() + " JOIN " + channelName + "\r\n";
+    std::string joinMessage = ":" + client->getNickname() + " JOIN " + channel.getName() + "\r\n";
 
     channel.removeInvitedClient(clientFd);
 
@@ -821,14 +948,14 @@ void Server::handleJoin(int clientFd, const Command &cmd)
     {
         sendToClient(clientFd,
                     ":server 331 " + client->getNickname()
-                    + " " + channelName
+                    + " " + channel.getName()
                     + " :No topic is set\r\n");
     }
     else
     {
         sendToClient(clientFd,
                     ":server 332 " + client->getNickname()
-                    + " " + channelName
+                    + " " + channel.getName()
                     + " :" + channel.getTopic() + "\r\n");
     }
     sendNamesList(clientFd, *client, channel);
@@ -882,7 +1009,7 @@ void Server::removeClientFromChannels(int clientFd)
         }
         else
         {
-            ensureChannelHasOperator(it->second, it->first);
+            ensureChannelHasOperator(it->second, it->second.getName());
             ++it;
         }
     }
@@ -948,7 +1075,9 @@ void Server::handlePart(int clientFd, const Command &cmd)
         return;
     }
 
-    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    std::string channelKey = normalizeChannelName(channelName);
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelKey);
 
     if (it == _channels.end())
     {
@@ -970,7 +1099,7 @@ void Server::handlePart(int clientFd, const Command &cmd)
         return;
     }
 
-    std::string partMessage = ":" + replyNick + " PART " + channelName;
+    std::string partMessage = ":" + replyNick + " PART " + channel.getName();
 
     if (cmd.params.size() >= 2 && !cmd.params[1].empty())
         partMessage += " :" + cmd.params[1];
@@ -982,9 +1111,9 @@ void Server::handlePart(int clientFd, const Command &cmd)
     channel.removeClient(clientFd);
 
     if (channel.isEmpty())
-        _channels.erase(channelName);
+        _channels.erase(channelKey);
     else
-        ensureChannelHasOperator(channel, channelName);
+        ensureChannelHasOperator(channel, channel.getName());
 }
 
 void Server::handleKick(int clientFd, const Command &cmd)
@@ -1023,7 +1152,9 @@ void Server::handleKick(int clientFd, const Command &cmd)
         return;
     }
 
-    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    std::string channelKey = normalizeChannelName(channelName);
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelKey);
 
     if (it == _channels.end())
     {
@@ -1074,7 +1205,7 @@ void Server::handleKick(int clientFd, const Command &cmd)
         return;
     }
 
-    std::string message = ":" + replyNick + " KICK " + channelName + " " + targetNick;
+    std::string message = ":" + replyNick + " KICK " + channel.getName() + " " + targetNick;
 
     if (!reason.empty())
         message += " :" + reason;
@@ -1086,9 +1217,9 @@ void Server::handleKick(int clientFd, const Command &cmd)
     channel.removeClient(targetClient->getFd());
     
     if (channel.isEmpty())
-        _channels.erase(channelName);
+        _channels.erase(channelKey);
     else
-        ensureChannelHasOperator(channel, channelName);
+        ensureChannelHasOperator(channel, channel.getName());
 }
 
 void Server::handleInvite(int clientFd, const Command &cmd)
@@ -1124,6 +1255,8 @@ void Server::handleInvite(int clientFd, const Command &cmd)
         return;
     }
 
+    std::string channelKey = normalizeChannelName(channelName);
+
     Client *targetClient = findClientByNickname(targetNick);
 
     if (targetClient == NULL || !targetClient->isRegistered())
@@ -1135,7 +1268,7 @@ void Server::handleInvite(int clientFd, const Command &cmd)
         return;
     }
 
-    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    std::map<std::string, Channel>::iterator it = _channels.find(channelKey);
 
     if (it == _channels.end())
     {
@@ -1177,8 +1310,8 @@ void Server::handleInvite(int clientFd, const Command &cmd)
 
     channel.addInvitedClient(targetClient);
 
-    std::string senderMsg = ":server 341 " + replyNick + " " + targetNick + " " + channelName + "\r\n";
-    std::string targetMsg = ":" + replyNick + " INVITE " + targetNick + " " + channelName + "\r\n";
+    std::string senderMsg = ":server 341 " + replyNick + " " + targetNick + " " + channel.getName() + "\r\n";
+    std::string targetMsg = ":" + replyNick + " INVITE " + targetNick + " " + channel.getName() + "\r\n";
 
     sendToClient(clientFd, senderMsg);
     sendToClient(targetClient->getFd(), targetMsg);
@@ -1217,7 +1350,9 @@ void Server::handleTopic(int clientFd, const Command &cmd)
         return;
     }
 
-    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    std::string channelKey = normalizeChannelName(channelName);
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelKey);
 
     if (it == _channels.end())
     {
@@ -1245,9 +1380,9 @@ void Server::handleTopic(int clientFd, const Command &cmd)
     if (cmd.params.size() == 1)
     {
         if (topic.empty())
-            message = ":server 331 " + replyNick + " " + channelName + " :No topic is set\r\n";
+            message = ":server 331 " + replyNick + " " + channel.getName() + " :No topic is set\r\n";
         else
-            message = ":server 332 " + replyNick + " " + channelName + " :" + topic + "\r\n";
+            message = ":server 332 " + replyNick + " " + channel.getName() + " :" + topic + "\r\n";
         sendToClient(clientFd, message);
     }
     else
@@ -1262,7 +1397,7 @@ void Server::handleTopic(int clientFd, const Command &cmd)
         }
         std::string newTopic = cmd.params[1];
         channel.setTopic(newTopic);
-        message = ":" + replyNick + " TOPIC " + channelName + " :" + newTopic + "\r\n";
+        message = ":" + replyNick + " TOPIC " + channel.getName() + " :" + newTopic + "\r\n";
         broadcastToChannel(channel, message, NULL);
     }
 }
@@ -1299,7 +1434,9 @@ void Server::handleMode(int clientFd, const Command &cmd)
         return;
     }
 
-    std::map<std::string, Channel>::iterator it = _channels.find(channelName);
+    std::string channelKey = normalizeChannelName(channelName);
+
+    std::map<std::string, Channel>::iterator it = _channels.find(channelKey);
 
     if (it == _channels.end())
     {
@@ -1343,7 +1480,7 @@ if (cmd.params.size() == 1)
                  ":server 324 "
                  + replyNick
                  + " "
-                 + channelName
+                 + channel.getName()
                  + " "
                  + modes
                  + modeParams
@@ -1447,7 +1584,7 @@ if (cmd.params.size() == 1)
 
     if (!appliedModes.empty())
     {
-        std::string modeMessage = ":" + replyNick + " MODE " + channelName + " " + appliedModes + appliedParams + "\r\n";
+        std::string modeMessage = ":" + replyNick + " MODE " + channel.getName() + " " + appliedModes + appliedParams + "\r\n";
         broadcastToChannel(channel, modeMessage, NULL);
     }
 }

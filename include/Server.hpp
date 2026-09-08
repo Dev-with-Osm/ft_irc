@@ -50,6 +50,10 @@ private:
 
     void sendToClient(int clientFd, const std::string &message);
 
+    void enableWriteEvent(int clientFd);
+    void disableWriteEvent(int clientFd);
+    void sendPendingData(size_t &i);
+
     bool isValidNickname(const std::string &nickname) const;
     bool isNicknameInUse(const std::string &nickname, int currentFd) const;
     bool isValidChannelName(const std::string &channelName) const;
@@ -144,6 +148,8 @@ private:
     void sendNamesList(int clientFd, const Client &client, Channel &channel);
     void broadcastNickChange(int clientFd,
                                  const std::string &message);
+
+    std::string normalizeChannelName(const std::string &name) const;
 
     void removeClientFromChannels(int clientFd);
     void cleanup();

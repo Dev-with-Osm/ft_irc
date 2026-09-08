@@ -3,6 +3,7 @@
 Client::Client()
     : _fd(-1),
       _buffer(""),
+      _sendBuffer(""),
       _nickname(""),
       _username(""),
       _passAccepted(false),
@@ -13,6 +14,7 @@ Client::Client()
 Client::Client(int fd)
     : _fd(fd),
       _buffer(""),
+      _sendBuffer(""),
       _nickname(""),
       _username(""),
       _passAccepted(false),
@@ -32,6 +34,11 @@ int Client::getFd() const
 std::string &Client::getBuffer()
 {
     return _buffer;
+}
+
+std::string &Client::getSendBuffer()
+{
+    return _sendBuffer;
 }
 
 const std::string &Client::getNickname() const
