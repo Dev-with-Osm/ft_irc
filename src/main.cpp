@@ -5,7 +5,7 @@
 
 int main(int argc, char const *argv[])
 {
-    if (argc != 3)
+    if (argc != 3 || std::string(argv[2]).empty())
     {
         std::cout << "Usage: ./ircserv <port> <password>" << std::endl;
         return 1;
