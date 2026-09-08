@@ -468,7 +468,7 @@ bool Server::isValidNickname(const std::string &nickname) const
         char c = nickname[i];
 
         if (c == ' ' || c == ',' || c == '*' || c == '?' ||
-            c == '!' || c == '@' || c == '.' || c == ':')
+            c == '!' || c == '@' || c == '.' || c == ':' || c == '#')
             return (false);
     }
 
