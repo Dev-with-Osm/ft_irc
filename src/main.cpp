@@ -1,7 +1,15 @@
 #include <iostream>
 #include <stdexcept>
-
+#include <signal.h>
 #include "../include/Server.hpp"
+
+volatile sig_atomic_t g_stop = 0;
+
+void handleSignal(int signal)
+{
+    (void)signal;
+    g_stop = 1;
+}
 
 int main(int argc, char const *argv[])
 {
@@ -10,6 +18,9 @@ int main(int argc, char const *argv[])
         std::cout << "Usage: ./ircserv <port> <password>" << std::endl;
         return 1;
     }
+
+    signal(SIGINT, handleSignal);
+    signal(SIGTERM, handleSignal);
 
     try
     {

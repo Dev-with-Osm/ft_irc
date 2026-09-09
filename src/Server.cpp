@@ -9,6 +9,9 @@
 #include <cstring>
 #include <sstream>
 #include <set>
+#include <signal.h>
+
+extern volatile sig_atomic_t g_stop;
 
 Server::Server(const char *portArg, const char *password)
     : _port(0),
@@ -504,7 +507,7 @@ void Server::handlePass(int clientFd, const Command &cmd)
 
 void Server::run()
 {
-    while (true)
+    while (!g_stop)
     {
         int ret = poll(&_pfds[0], _pfds.size(), WAIT_FOREVER);
 
